@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Sopifo Print Agent</string>
+    <string name="notif_channel_service">Print agent status</string>
+    <string name="notif_channel_service_desc">Keeps the print agent ready to receive jobs</string>
+    <string name="notif_channel_jobs">Print jobs</string>
+    <string name="notif_channel_jobs_desc">Shown briefly while a job is printing</string>
+</resources>
