@@ -55,6 +55,7 @@ class DeviceRepository(
                 RegisterRequest(
                     token = code.token,
                     deviceName = systemInfo.deviceName(),
+                    deviceUuid = systemInfo.deviceUuid(),
                     appVersion = systemInfo.appVersion,
                     fcmToken = fcmToken,
                 ),
@@ -62,10 +63,14 @@ class DeviceRepository(
         } catch (e: Exception) {
             AppLog.w(TAG, "Registration failed", e)
             throw RegistrationException(
-                when ((e as? com.sopifo.printagent.data.api.ApiException)?.httpCode) {
-                    400, 401, 403, 404, 422 -> "Registration token was rejected"
-                    null -> "Cannot reach Sopifo Cloud. Check the internet connection."
-                    else -> "Server error during registration. Try again."
+                when {
+                    (e as? com.sopifo.printagent.data.api.ApiException)?.malformed == true ->
+                        "Server response not understood. Update the app or contact support."
+                    else -> when ((e as? com.sopifo.printagent.data.api.ApiException)?.httpCode) {
+                        400, 401, 403, 404, 422 -> "Registration token was rejected"
+                        null -> "Cannot reach Sopifo Cloud. Check the internet connection."
+                        else -> "Server error during registration. Try again."
+                    }
                 },
                 e,
             )

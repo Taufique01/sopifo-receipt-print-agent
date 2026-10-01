@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonNames
 data class RegisterRequest(
     val token: String,
     @SerialName("device_name") val deviceName: String,
+    @SerialName("device_uuid") val deviceUuid: String? = null,
     val platform: String = "android",
     @SerialName("app_version") val appVersion: String,
     @SerialName("fcm_token") val fcmToken: String? = null,

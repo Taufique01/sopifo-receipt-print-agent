@@ -76,7 +76,7 @@ class HeartbeatWorker(context: Context, params: WorkerParameters) : AgentWorker(
         try {
             ServiceController.start(applicationContext, "heartbeat")
             val printers = container.printers
-            if (container.bluetooth.isBluetoothOn() && container.bluetooth.hasConnectPermission()) printers.probeAll() else printers.refreshPassive()
+            if (container.bluetooth.isBluetoothOn() && container.bluetooth.hasConnectPermission()) printers.probeAll(respectBackoff = true) else printers.refreshPassive()
             val status = printers.status.value
             container.device.sendHeartbeat(
                 PrinterStatusPayload(

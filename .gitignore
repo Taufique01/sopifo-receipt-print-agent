@@ -14,3 +14,6 @@
 /scripts/out/
 __pycache__/
 .kotlin/
+
+# Firebase client config: keep out of the repo (docs/FIREBASE_SETUP.md)
+/app/google-services.json

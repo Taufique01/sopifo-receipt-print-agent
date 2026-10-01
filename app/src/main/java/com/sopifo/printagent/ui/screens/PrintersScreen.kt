@@ -34,9 +34,6 @@ import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.ui.AgentViewModel
 import com.sopifo.printagent.ui.BondedDevice
 
-private data class LabelSize(val w: Int, val h: Int)
-private val LABEL_SIZES = listOf(LabelSize(40, 30), LabelSize(50, 30), LabelSize(60, 40), LabelSize(100, 50))
-
 @Composable
 fun PrintersScreen(vm: AgentViewModel) {
     val context = LocalContext.current
@@ -101,8 +98,8 @@ fun PrintersScreen(vm: AgentViewModel) {
 }
 
 private fun savePicked(vm: AgentViewModel, role: PrinterRole, device: BondedDevice) = when (role) {
-    PrinterRole.RECEIPT -> vm.savePrinter(role, device, PrinterProtocol.ESC_POS, widthDots = 576, labelWidthMm = 50, labelHeightMm = 30)
-    PrinterRole.LABEL -> vm.savePrinter(role, device, PrinterProtocol.TSPL, widthDots = 400, labelWidthMm = 50, labelHeightMm = 30)
+    PrinterRole.RECEIPT -> vm.savePrinter(role, device, PrinterProtocol.ESC_POS)
+    PrinterRole.LABEL -> vm.savePrinter(role, device, PrinterProtocol.TSPL)
 }
 
 @Composable
@@ -115,19 +112,23 @@ private fun PrinterSettings(config: PrinterConfigEntity, onChange: (PrinterConfi
     if (config.protocol == PrinterProtocol.ESC_POS) {
         Text("Paper width", style = MaterialTheme.typography.labelLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = config.widthDots == 384, onClick = { onChange(config.copy(widthDots = 384)) }, label = { Text("58 mm") })
-            FilterChip(selected = config.widthDots == 576, onClick = { onChange(config.copy(widthDots = 576)) }, label = { Text("80 mm") })
-        }
-    } else {
-        Text("Label size", style = MaterialTheme.typography.labelLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            LABEL_SIZES.forEach { s ->
+            for (mm in listOf(58, 80)) {
                 FilterChip(
-                    selected = config.labelWidthMm == s.w && config.labelHeightMm == s.h,
-                    onClick = { onChange(config.copy(labelWidthMm = s.w, labelHeightMm = s.h, widthDots = s.w * 8)) },
-                    label = { Text("${s.w}×${s.h}") },
+                    selected = config.paperWidthMm == mm,
+                    onClick = { onChange(config.copy(paperWidthMm = mm)) },
+                    label = { Text("$mm mm") },
+                    modifier = Modifier.testTag("paper_$mm"),
                 )
             }
         }
+        if (config.paperWidthMm == null) {
+            Text(
+                "Not set: receipts print exactly as received. Choose the paper loaded in this printer so wider receipts shrink to fit instead of being cut off.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
+    // Layout size comes from the dashboard (the job image is rendered at that size).
+    Text("Receipt and label layout size are set in the dashboard.", style = MaterialTheme.typography.bodySmall)
 }

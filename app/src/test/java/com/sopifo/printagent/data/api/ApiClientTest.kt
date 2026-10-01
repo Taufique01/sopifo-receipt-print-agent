@@ -109,6 +109,13 @@ class ApiClientTest {
         assertEquals("/api/print-jobs/job_5", server.takeRequest().path)
     }
 
+    @Test fun getJobDoesNotMistakeNestedDeviceForEnvelope() = runTest {
+        server.enqueue(MockResponse().setBody("""{"id":"job_6","type":"receipt","status":"pending","image_url":"https://x/6.png","created_at":"2026-10-01T00:00:00Z","payload":{},"device":{"id":"dev_1","name":"HONOR X6c"}}"""))
+        val job = client.getJob("job_6")
+        assertEquals("job_6", job.id)
+        assertEquals("receipt", job.type)
+    }
+
     @Test fun rejectsPathTraversalJobIdsWithoutRequest() = runTest {
         try {
             client.getJob("../devices/register")

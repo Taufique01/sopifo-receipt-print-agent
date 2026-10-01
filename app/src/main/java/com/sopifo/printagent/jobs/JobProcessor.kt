@@ -194,7 +194,7 @@ class JobProcessor(
         try {
             printers.print(
                 printer = printer,
-                data = data,
+                data = data.bytes,
                 shouldContinue = fresh,
                 beforeWrite = {
                     if (!fresh()) throw AbortPrint("job expired before printer was reachable")
@@ -222,8 +222,9 @@ class JobProcessor(
         }
 
         jobs.markPrinted(job.id)
-        jobs.recordRecent(job.id, type.wireName, RecentJobStatus.PRINTED)
+        jobs.recordRecent(job.id, type.wireName, RecentJobStatus.PRINTED, data.note)
         AppLog.i(TAG, "Job printed", "job" to job.id)
+        data.note?.let { AppLog.w(TAG, "Paper width mismatch", null, "job" to job.id, "note" to it) }
         runCatching { reporter.reportCompleted(job.id, clock.now().toString()) }
             .onFailure { AppLog.e(TAG, "Could not schedule completion report", it, "job" to job.id) }
         return JobOutcome.PRINTED

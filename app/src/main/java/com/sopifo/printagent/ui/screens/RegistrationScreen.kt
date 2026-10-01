@@ -13,7 +13,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -79,7 +78,7 @@ fun RegistrationScreen(vm: AgentViewModel) {
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth().testTag("token_input"),
         )
-        OutlinedButton(
+        Button(
             onClick = { vm.register(token) },
             enabled = token.isNotBlank() && !registering,
             modifier = Modifier.fillMaxWidth().testTag("register_button"),

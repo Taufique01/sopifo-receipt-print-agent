@@ -18,19 +18,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sopifo.printagent.core.AppLog
+import com.sopifo.printagent.core.LogShare
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.fcm.FcmState
 import com.sopifo.printagent.ui.AgentViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // BatteryLife: an unattended print agent must not be deferred by Doze; see README "Battery exemption".
 @SuppressLint("BatteryLife")
@@ -45,7 +48,8 @@ fun DiagnosticsScreen(vm: AgentViewModel) {
     val online by vm.cloudOnline.collectAsStateWithLifecycle()
     val ignoringOpt by vm.ignoringBatteryOptimizations.collectAsStateWithLifecycle()
     var confirmReset by remember { mutableStateOf(false) }
-    var showLogs by remember { mutableStateOf(false) }
+    var sendingLogs by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -88,14 +92,29 @@ fun DiagnosticsScreen(vm: AgentViewModel) {
         OutlinedButton(onClick = {
             runCatching { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri())) }
         }) { Text("App settings (auto-launch, battery)") }
-        OutlinedButton(onClick = { showLogs = !showLogs }) { Text(if (showLogs) "Hide recent log" else "Show recent log") }
-        if (showLogs) {
-            SectionCard {
-                AppLog.recentLines().takeLast(60).reversed().forEach {
-                    Text(it, fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 12.sp)
+        OutlinedButton(
+            enabled = !sendingLogs,
+            modifier = Modifier.testTag("diag_send_logs"),
+            onClick = {
+                sendingLogs = true
+                scope.launch {
+                    try {
+                        val header = mapOf(
+                            "App version" to vm.appVersion,
+                            "Store" to config?.storeName,
+                            "Device name" to config?.deviceName,
+                            "Device ID" to config?.deviceId,
+                        )
+                        val file = withContext(Dispatchers.IO) { LogShare.buildFile(context, header) }
+                        LogShare.send(context, file)
+                    } catch (e: Exception) {
+                        AppLog.e("Diagnostics", "Sending logs failed", e)
+                    } finally {
+                        sendingLogs = false
+                    }
                 }
-            }
-        }
+            },
+        ) { Text(if (sendingLogs) "Preparing logs…" else "Send logs to support (WhatsApp)") }
         OutlinedButton(onClick = { confirmReset = true }) { Text("Re-register device", color = MaterialTheme.colorScheme.error) }
     }
 

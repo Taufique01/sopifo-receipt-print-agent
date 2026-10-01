@@ -38,21 +38,50 @@ class PrintDataBuilderTest {
     }
 
     @Test fun receiptPngIsEncodedAtNativeWidth() {
-        val bytes = builder.fromPng(testPng(576, 100), receipt, copies = 1)
+        val bytes = builder.fromPng(testPng(576, 100), receipt, copies = 1).bytes
         assertEquals(72 to 100, rasterHeader(bytes))
         // First data byte: left half black.
         assertEquals(0xFF, bytes[10].toInt() and 0xFF)
     }
 
     @Test fun widerImagesAreScaledDownToPaperWidth() {
-        val bytes = builder.fromPng(testPng(1152, 200), receipt, copies = 1)
+        val bytes = builder.fromPng(testPng(1152, 200), receipt, copies = 1).bytes
         assertEquals(72 to 100, rasterHeader(bytes))
     }
 
+    @Test fun eightyMmReceiptShrinksOntoFiftyEightMmPaperWithNote() {
+        val data = builder.fromPng(testPng(576, 150), receipt.copy(paperWidthMm = 58), copies = 1)
+        assertEquals(48 to 100, rasterHeader(data.bytes))
+        assertTrue(data.note!!.contains("58 mm"))
+    }
+
+    @Test fun fiftyEightMmReceiptIsCentredOnEightyMmPaper() {
+        val data = builder.fromPng(testPng(384, 100), receipt.copy(paperWidthMm = 80), copies = 1)
+        assertEquals(72 to 100, rasterHeader(data.bytes))
+        // 96-dot (12-byte) white margin, then the image's black left half starts.
+        assertEquals(0x00, data.bytes[10].toInt() and 0xFF)
+        assertEquals(0x00, data.bytes[10 + 11].toInt() and 0xFF)
+        assertEquals(0xFF, data.bytes[10 + 12].toInt() and 0xFF)
+        assertEquals(null, data.note)
+    }
+
     @Test fun labelPngIsEncodedAsTspl() {
-        val text = String(builder.fromPng(testPng(400, 240), label, copies = 1), Charsets.ISO_8859_1)
+        val text = String(builder.fromPng(testPng(400, 240), label, copies = 1).bytes, Charsets.ISO_8859_1)
         assertTrue(text.startsWith("SIZE 50 mm,30 mm"))
         assertTrue(text.contains("BITMAP 0,0,50,240,0,"))
+    }
+
+    @Test fun labelSizeComesFromImageNotPrinterConfig() {
+        // Dashboard 100×150 mm label on a printer whose (legacy) config says 50×30.
+        val text = String(builder.fromPng(testPng(800, 1200), label, copies = 1).bytes, Charsets.ISO_8859_1)
+        assertTrue(text.startsWith("SIZE 100 mm,150 mm"))
+        assertTrue(text.contains("BITMAP 0,0,100,1200,0,"))
+    }
+
+    @Test fun receiptWidthComesFromImageNotPrinterConfig() {
+        // Dashboard 58 mm receipt on a printer whose (legacy) config says 80 mm: not stretched.
+        val bytes = builder.fromPng(testPng(384, 100), receipt, copies = 1).bytes
+        assertEquals(48 to 100, rasterHeader(bytes))
     }
 
     @Test fun garbageBytesAreRejectedNotCrashing() {

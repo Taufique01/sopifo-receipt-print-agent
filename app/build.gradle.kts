@@ -71,6 +71,8 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+    // Exported Room schemas, for the on-device migration test.
+    sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/LICENSE*", "META-INF/NOTICE*")
     }

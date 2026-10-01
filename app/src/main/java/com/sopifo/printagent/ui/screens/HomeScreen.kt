@@ -6,12 +6,16 @@ import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -25,6 +29,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.ui.AgentViewModel
+import com.sopifo.printagent.ui.theme.AppIcons
 
 // BatteryLife: an unattended print agent must not be deferred by Doze; see README "Battery exemption".
 @SuppressLint("BatteryLife")
@@ -57,10 +62,10 @@ fun HomeScreen(vm: AgentViewModel, onRequestPermissions: () -> Unit) {
             StatusRow("Last sync", formatAgo(config?.lastSyncAt), tag = "last_sync")
         }
 
-        SectionCard(title = "Test") {
+        SectionCard(title = "Test print") {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = { vm.testPrint(PrinterRole.RECEIPT) }, modifier = Modifier.weight(1f).testTag("test_receipt")) { Text("Test Receipt Print") }
-                Button(onClick = { vm.testPrint(PrinterRole.LABEL) }, modifier = Modifier.weight(1f).testTag("test_label")) { Text("Test Label Print") }
+                TestPrintButton("Receipt", Modifier.weight(1f).testTag("test_receipt")) { vm.testPrint(PrinterRole.RECEIPT) }
+                TestPrintButton("Label", Modifier.weight(1f).testTag("test_label")) { vm.testPrint(PrinterRole.LABEL) }
             }
             OutlinedButton(onClick = vm::reconnectPrinters, modifier = Modifier.fillMaxWidth()) { Text("Reconnect printers") }
         }
@@ -76,5 +81,14 @@ fun HomeScreen(vm: AgentViewModel, onRequestPermissions: () -> Unit) {
                 OutlinedButton(onClick = onRequestPermissions) { Text("Grant permissions") }
             }
         }
+    }
+}
+
+@Composable
+private fun TestPrintButton(label: String, modifier: Modifier, onClick: () -> Unit) {
+    Button(onClick = onClick, modifier = modifier) {
+        Icon(AppIcons.Print, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, maxLines = 1)
     }
 }

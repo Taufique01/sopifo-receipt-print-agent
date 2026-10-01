@@ -22,6 +22,7 @@ import com.sopifo.printagent.SopifoApp
 import com.sopifo.printagent.core.AppLog
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.print.PrinterState
+import com.sopifo.printagent.work.WorkScheduler
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,7 +40,9 @@ import kotlinx.coroutines.launch
  * Keeps the agent process alive and reacts to system events. It deliberately does no periodic
  * work of its own — no loops, no polling, no held wake locks, no open Bluetooth sockets. It
  * only listens for events that should trigger pending-job recovery:
- *  network reconnect, device wake (screen on / Doze exit), Bluetooth on, printer link up.
+ *  network reconnect, Doze exit, and screen on (at most once a minute).
+ * Unlock and Bluetooth-on are deliberately not triggers: unlock always follows screen on, and a
+ * job that arrived while Bluetooth was off was already fetched and reported failed, not pending.
  */
 class PrintAgentService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, t ->
@@ -121,7 +124,6 @@ class PrintAgentService : Service() {
                 addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
                 addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
                 addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_USER_PRESENT)
                 addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
             }
             ContextCompat.registerReceiver(this, eventReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -142,8 +144,8 @@ class PrintAgentService : Service() {
                         scope.launch {
                             container.printers.refreshPassive()
                             if (state == BluetoothAdapter.STATE_ON) {
+                                container.printers.resetProbeBackoff()
                                 container.printers.probeAll()
-                                container.scheduler.enqueuePendingSync("bluetooth_on")
                             }
                         }
                     }
@@ -152,7 +154,10 @@ class PrintAgentService : Service() {
                         val connected = intent.action == BluetoothDevice.ACTION_ACL_CONNECTED
                         scope.launch { container.printers.onLinkEvent(device.address, connected) }
                     }
-                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> container.scheduler.enqueuePendingSync("device_wake")
+                    Intent.ACTION_SCREEN_ON -> container.scheduler.enqueuePendingSync(
+                        "screen_on",
+                        minIntervalMs = WorkScheduler.SCREEN_ON_SYNC_INTERVAL_MS,
+                    )
                     PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> {
                         val pm = getSystemService(PowerManager::class.java)
                         if (pm?.isDeviceIdleMode == false) container.scheduler.enqueuePendingSync("doze_exit")

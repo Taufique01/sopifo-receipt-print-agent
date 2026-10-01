@@ -142,6 +142,8 @@ the **Printers** tab. The app stores the name and MAC address.
 
 A printer counts as **Connected** when the last connection to it succeeded. Status is refreshed by
 every job, by probes (service start, Bluetooth on, each heartbeat) and by system link events.
+While a printer is unreachable, heartbeat probes back off to every ~15 minutes to save battery
+(jobs are never delayed by this); opening the app or turning Bluetooth on resets it.
 
 ---
 

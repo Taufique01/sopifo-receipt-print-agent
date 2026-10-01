@@ -40,11 +40,17 @@ class WorkScheduler(context: Context) : JobReporter {
     /**
      * Pending-job recovery. Triggers that fire together (boot + network + screen on) collapse
      * into one request through the debounce window and the unique-work KEEP policy.
+     * Frequent triggers (screen on) pass a longer [minIntervalMs]: they are skipped when any
+     * sync ran within that window, since that sync already covered the 2-minute job window.
      */
-    fun enqueuePendingSync(reason: String, force: Boolean = false) = safely("enqueuePendingSync") {
+    fun enqueuePendingSync(
+        reason: String,
+        force: Boolean = false,
+        minIntervalMs: Long = PENDING_SYNC_DEBOUNCE_MS,
+    ) = safely("enqueuePendingSync") {
         val now = System.currentTimeMillis()
         val last = lastPendingSync.get()
-        if (!force && now - last < PENDING_SYNC_DEBOUNCE_MS) return@safely
+        if (!force && now - last < minIntervalMs) return@safely
         lastPendingSync.set(now)
         val request = OneTimeWorkRequestBuilder<PendingSyncWorker>()
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
@@ -141,6 +147,8 @@ class WorkScheduler(context: Context) : JobReporter {
         const val UNIQUE_RECOVERY = "crash-recovery"
         const val HEARTBEAT_INTERVAL_MIN = 5L
         const val PENDING_SYNC_DEBOUNCE_MS = 5_000L
+        /** Screen-on fires many times a day; jobs live 120 s, so every 30 s still catches them cheaply. */
+        const val SCREEN_ON_SYNC_INTERVAL_MS = 30_000L
         private val lastPendingSync = AtomicLong(0)
     }
 }

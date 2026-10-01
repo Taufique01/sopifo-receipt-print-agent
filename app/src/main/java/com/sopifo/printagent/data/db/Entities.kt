@@ -33,14 +33,22 @@ data class PrinterConfigEntity(
     val name: String,
     @ColumnInfo(name = "mac_address") val macAddress: String,
     val protocol: PrinterProtocol,
-    /** Printable width in dots (e.g. 384 for 58 mm, 576 for 80 mm at 203 dpi). */
+    /**
+     * Legacy, unused: layout size is a dashboard setting and comes from the job image (see
+     * PrintDataBuilder). The paper actually loaded is [paperWidthMm].
+     */
     @ColumnInfo(name = "width_dots") val widthDots: Int,
-    /** Label stock size, used by TSPL printers. */
     @ColumnInfo(name = "label_width_mm") val labelWidthMm: Int = 50,
     @ColumnInfo(name = "label_height_mm") val labelHeightMm: Int = 30,
     @ColumnInfo(name = "label_gap_mm") val labelGapMm: Int = 2,
     /** ESC/POS only: send a paper cut after each job. */
     @ColumnInfo(name = "cut_paper") val cutPaper: Boolean = true,
+    /**
+     * ESC/POS only: receipt paper loaded in this printer, 58 or 80. Wider job images are scaled
+     * down to fit and narrower ones centred. Null (printers saved before this setting existed):
+     * images print exactly as received.
+     */
+    @ColumnInfo(name = "paper_width_mm") val paperWidthMm: Int? = null,
     @ColumnInfo(name = "updated_at") val updatedAt: Long = System.currentTimeMillis(),
 )
 

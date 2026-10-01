@@ -33,6 +33,13 @@ class SystemInfo(private val context: Context) {
         null
     }?.takeIf { it.isNotBlank() } ?: "${Build.MANUFACTURER} ${Build.MODEL}"
 
+    /** Stable per install-signing-key + user (survives reinstall), so re-pairing updates the same backend device. */
+    fun deviceUuid(): String? = try {
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+    } catch (_: Exception) {
+        null
+    }?.takeIf { it.isNotBlank() }?.let { "android-$it" }
+
     fun isNetworkAvailable(): Boolean = try {
         val cm = context.getSystemService(ConnectivityManager::class.java)
         val caps = cm?.getNetworkCapabilities(cm.activeNetwork)

@@ -13,6 +13,7 @@ import com.sopifo.printagent.data.api.PrintJobDto
 import com.sopifo.printagent.data.db.PrinterConfigEntity
 import com.sopifo.printagent.data.db.PrinterProtocol
 import com.sopifo.printagent.data.db.PrinterRole
+import com.sopifo.printagent.print.PrintDataBuilder
 import com.sopifo.printagent.print.PrintException
 import com.sopifo.printagent.service.ServiceController
 import kotlinx.coroutines.Dispatchers
@@ -78,6 +79,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshDeviceFacts() {
         _battery.value = c.systemInfo.batteryPercent()
         _ignoringBatteryOpt.value = c.systemInfo.isIgnoringBatteryOptimizations()
+        c.printers.resetProbeBackoff()
         viewModelScope.launch { runCatching { c.printers.refreshPassive() } }
     }
 
@@ -130,10 +132,25 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun loadPending() {
+    /**
+     * Loads the backend's pending jobs. With [printFirst] (the Refresh button) it first runs the
+     * same pending-job recovery as the background triggers, so a listed job gets printed instead
+     * of only shown. The processor's ledger and in-flight guard keep this from double printing.
+     */
+    fun loadPending(printFirst: Boolean = false) {
         _pending.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             try {
+                if (printFirst) {
+                    try {
+                        val outcomes = c.processor.syncPending("manual_refresh")
+                        if (outcomes.isNotEmpty()) {
+                            _message.value = outcomes.entries.joinToString { "${it.value} ${it.key.name.lowercase()}" }
+                        }
+                    } catch (e: Exception) {
+                        AppLog.w(TAG, "Manual pending sync failed", e)
+                    }
+                }
                 val result = c.api.getPendingJobs()
                 _pending.update { it.copy(loading = false, jobs = result.jobs) }
             } catch (e: Exception) {
@@ -174,7 +191,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
         if (_bonded.value.isEmpty()) _message.value = "No paired Bluetooth devices. Pair the printer in Android Bluetooth settings first."
     }
 
-    fun savePrinter(role: PrinterRole, device: BondedDevice, protocol: PrinterProtocol, widthDots: Int, labelWidthMm: Int, labelHeightMm: Int) {
+    fun savePrinter(role: PrinterRole, device: BondedDevice, protocol: PrinterProtocol) {
         viewModelScope.launch {
             c.db.printerConfigDao().upsert(
                 PrinterConfigEntity(
@@ -182,9 +199,10 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
                     name = device.name,
                     macAddress = device.address,
                     protocol = protocol,
-                    widthDots = widthDots,
-                    labelWidthMm = labelWidthMm,
-                    labelHeightMm = labelHeightMm,
+                    // Unused: the size comes from the dashboard-rendered image.
+                    widthDots = PrintDataBuilder.MAX_ESC_POS_WIDTH,
+                    // Changing to another printer keeps the chosen paper width.
+                    paperWidthMm = c.db.printerConfigDao().get(role)?.paperWidthMm,
                 ),
             )
             AppLog.i(TAG, "Printer saved", "role" to role, "name" to device.name)

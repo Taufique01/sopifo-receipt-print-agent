@@ -79,7 +79,7 @@ class ApiClient(
     suspend fun register(baseUrl: String, body: RegisterRequest): RegisterResponse {
         val base = urlPolicy.parseAllowed(baseUrl) ?: throw ApiException(null, "Server URL not allowed: $baseUrl")
         val element = execute(post(base, "api/devices/register", json.encodeToString(RegisterRequest.serializer(), body), auth = false))
-        return decode(RegisterResponse.serializer(), unwrap(element))
+        return decode(RegisterResponse.serializer(), unwrap(element, "data", "device"))
     }
 
     suspend fun heartbeat(body: HeartbeatRequest) {
@@ -93,7 +93,7 @@ class ApiClient(
     suspend fun getJob(jobId: String): PrintJobDto {
         require(UrlPolicy.isValidJobId(jobId)) { "Invalid job id" }
         val element = execute(get(base(), "api/print-jobs/$jobId"))
-        return decode(PrintJobDto.serializer(), unwrap(element))
+        return decode(PrintJobDto.serializer(), unwrap(element, "data", "job"))
     }
 
     /** Pending jobs for this device. Malformed entries are dropped individually, not the whole batch. */
@@ -217,10 +217,13 @@ class ApiClient(
         throw ApiException(200, "Response does not match contract: ${e.message?.take(120)}", e, malformed = true)
     }
 
-    /** Accepts both bare objects and `{ "data": {...} }` / `{ "job": {...} }` envelopes. */
-    private fun unwrap(element: JsonElement): JsonElement {
+    /**
+     * Accepts both bare objects and `{ "<key>": {...} }` envelopes. Keys are per endpoint: a bare
+     * job carries a nested `device` object, which must not be mistaken for an envelope.
+     */
+    private fun unwrap(element: JsonElement, vararg keys: String): JsonElement {
         if (element is JsonObject) {
-            for (key in listOf("data", "job", "device")) {
+            for (key in keys) {
                 val inner = element[key]
                 if (inner is JsonObject) return inner
             }

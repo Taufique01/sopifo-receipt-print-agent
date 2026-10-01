@@ -44,7 +44,7 @@ fun PendingScreen(vm: AgentViewModel) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             ScreenTitle("Pending jobs")
             Row(Modifier.weight(1f)) {}
-            OutlinedButton(onClick = vm::loadPending, enabled = !state.loading) { Text("Refresh") }
+            OutlinedButton(onClick = { vm.loadPending(printFirst = true) }, enabled = !state.loading) { Text("Refresh & print") }
         }
         when {
             state.loading && state.jobs.isEmpty() -> CircularProgressIndicator()
