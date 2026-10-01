@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.sopifo.printagent.R
 import com.sopifo.printagent.ui.MainActivity
 
@@ -37,8 +38,9 @@ object Notifications {
 
     fun serviceNotification(context: Context, text: String): Notification =
         NotificationCompat.Builder(context, CHANNEL_SERVICE)
-            .setSmallIcon(R.drawable.ic_stat_print)
-            .setContentTitle("Sopifo Print Agent")
+            .setSmallIcon(R.drawable.ic_stat_sopifo)
+            .setColor(ContextCompat.getColor(context, R.color.brand_teal))
+            .setContentTitle("Sopifo Print")
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -51,7 +53,8 @@ object Notifications {
 
     fun workNotification(context: Context): Notification =
         NotificationCompat.Builder(context, CHANNEL_WORK)
-            .setSmallIcon(R.drawable.ic_stat_print)
+            .setSmallIcon(R.drawable.ic_stat_sopifo)
+            .setColor(ContextCompat.getColor(context, R.color.brand_teal))
             .setContentTitle("Printing")
             .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)

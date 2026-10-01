@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Brand teal from the launcher icon; notification accent. -->
+    <color name="brand_teal">#18BD9F</color>
+</resources>
