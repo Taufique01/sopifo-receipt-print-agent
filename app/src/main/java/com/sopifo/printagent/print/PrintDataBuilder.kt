@@ -28,7 +28,8 @@ class PrintData(val bytes: ByteArray, val note: String? = null)
  *
  * Safety net for a dashboard width that doesn't match the paper: when the receipt printer's
  * paper width is set on this device, wider receipts are scaled down to fit (instead of losing
- * the right-hand side) and narrower ones are centred.
+ * the right-hand side). Narrower ones are centred by the printer itself (ESC a 1), never by
+ * padding here: a padded image on paper narrower than configured would be cropped.
  */
 class PrintDataBuilder {
 
@@ -83,7 +84,7 @@ class PrintDataBuilder {
                 bmp = scaled
             }
             // Downscaling greys out 1-dot strokes; a lighter cut-off keeps thin text and rules.
-            val mono = toMono(bmp, fit.canvasWidth, fit.offsetX, if (shrunk) SCALED_THRESHOLD else DEFAULT_THRESHOLD)
+            val mono = toMono(bmp, if (shrunk) SCALED_THRESHOLD else DEFAULT_THRESHOLD)
             val note = if (paperW != null && sourceWidth > paperW) {
                 "Shrunk to fit ${printer.paperWidthMm} mm paper; set receipt width to ${printer.paperWidthMm} mm in the dashboard"
             } else null
@@ -105,14 +106,11 @@ class PrintDataBuilder {
         }
     }
 
-    /**
-     * Row-by-row conversion so a long receipt never needs a full ARGB int array in memory. The
-     * image is placed [offsetX] dots in on a [canvasWidth]-dot row (white margins for centring).
-     */
-    private fun toMono(bmp: Bitmap, canvasWidth: Int, offsetX: Int, threshold: Int): MonoBitmap {
+    /** Row-by-row conversion so a long receipt never needs a full ARGB int array in memory. */
+    private fun toMono(bmp: Bitmap, threshold: Int): MonoBitmap {
         val w = bmp.width
         val h = bmp.height
-        val bytesPerRow = (canvasWidth + 7) / 8
+        val bytesPerRow = (w + 7) / 8
         val out = ByteArray(bytesPerRow * h)
         val row = IntArray(w)
         for (y in 0 until h) {
@@ -120,12 +118,11 @@ class PrintDataBuilder {
             val base = y * bytesPerRow
             for (x in 0 until w) {
                 if (MonoBitmap.isDark(row[x], threshold)) {
-                    val cx = x + offsetX
-                    out[base + cx / 8] = (out[base + cx / 8].toInt() or (0x80 ushr (cx % 8))).toByte()
+                    out[base + x / 8] = (out[base + x / 8].toInt() or (0x80 ushr (x % 8))).toByte()
                 }
             }
         }
-        return MonoBitmap(canvasWidth, h, out)
+        return MonoBitmap(w, h, out)
     }
 
     /** Loaded receipt paper in dots, when known. Labels are sized by the image itself. */

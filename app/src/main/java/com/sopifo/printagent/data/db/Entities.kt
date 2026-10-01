@@ -45,7 +45,7 @@ data class PrinterConfigEntity(
     @ColumnInfo(name = "cut_paper") val cutPaper: Boolean = true,
     /**
      * ESC/POS only: receipt paper loaded in this printer, 58 or 80. Wider job images are scaled
-     * down to fit and narrower ones centred. Null (printers saved before this setting existed):
+     * down to fit; narrower ones are centred by the printer. Null (printers saved before this setting existed):
      * images print exactly as received.
      */
     @ColumnInfo(name = "paper_width_mm") val paperWidthMm: Int? = null,

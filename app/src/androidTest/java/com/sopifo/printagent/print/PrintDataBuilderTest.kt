@@ -40,8 +40,8 @@ class PrintDataBuilderTest {
     @Test fun receiptPngIsEncodedAtNativeWidth() {
         val bytes = builder.fromPng(testPng(576, 100), receipt, copies = 1).bytes
         assertEquals(72 to 100, rasterHeader(bytes))
-        // First data byte: left half black.
-        assertEquals(0xFF, bytes[10].toInt() and 0xFF)
+        // First data byte (after ESC @, ESC a 1 and the GS v 0 header): left half black.
+        assertEquals(0xFF, bytes[13].toInt() and 0xFF)
     }
 
     @Test fun widerImagesAreScaledDownToPaperWidth() {
@@ -55,13 +55,10 @@ class PrintDataBuilderTest {
         assertTrue(data.note!!.contains("58 mm"))
     }
 
-    @Test fun fiftyEightMmReceiptIsCentredOnEightyMmPaper() {
+    @Test fun fiftyEightMmReceiptIsNotPaddedOnEightyMmSetting() {
+        // Paper set to 80 mm but the printer may really be 58 mm: never shift the image right.
         val data = builder.fromPng(testPng(384, 100), receipt.copy(paperWidthMm = 80), copies = 1)
-        assertEquals(72 to 100, rasterHeader(data.bytes))
-        // 96-dot (12-byte) white margin, then the image's black left half starts.
-        assertEquals(0x00, data.bytes[10].toInt() and 0xFF)
-        assertEquals(0x00, data.bytes[10 + 11].toInt() and 0xFF)
-        assertEquals(0xFF, data.bytes[10 + 12].toInt() and 0xFF)
+        assertEquals(48 to 100, rasterHeader(data.bytes))
         assertEquals(null, data.note)
     }
 

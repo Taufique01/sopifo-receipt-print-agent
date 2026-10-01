@@ -10,6 +10,9 @@ object EscPosEncoder {
     fun encode(image: MonoBitmap, copies: Int = 1, feedLines: Int = 4, cut: Boolean = true): ByteArray {
         val out = ByteArrayOutputStream(image.data.size + 64)
         out.write(byteArrayOf(0x1B, 0x40)) // ESC @  initialize
+        // ESC a 1: the printer centres images narrower than its own head (58 mm receipt on an
+        // 80 mm printer). Printers that ignore it print left-aligned; either way nothing is cropped.
+        out.write(byteArrayOf(0x1B, 0x61, 0x01))
         repeat(copies.coerceIn(1, MAX_COPIES)) {
             var y = 0
             while (y < image.height) {

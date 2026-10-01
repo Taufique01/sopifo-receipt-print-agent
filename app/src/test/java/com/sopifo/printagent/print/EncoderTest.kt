@@ -47,13 +47,13 @@ class EscPosEncoderTest {
 
     @Test fun headerRasterFeedAndCut() {
         val bytes = EscPosEncoder.encode(solid(16, 2), feedLines = 3, cut = true)
-        // ESC @
-        assertEquals(0x1B, bytes[0].toInt()); assertEquals(0x40, bytes[1].toInt())
+        // ESC @, then ESC a 1 (printer centres narrower images)
+        assertArrayEquals(byteArrayOf(0x1B, 0x40, 0x1B, 0x61, 0x01), bytes.copyOfRange(0, 5))
         // GS v 0 m xL xH yL yH
-        assertArrayEquals(byteArrayOf(0x1D, 0x76, 0x30, 0x00, 2, 0, 2, 0), bytes.copyOfRange(2, 10))
+        assertArrayEquals(byteArrayOf(0x1D, 0x76, 0x30, 0x00, 2, 0, 2, 0), bytes.copyOfRange(5, 13))
         // 4 data bytes, then ESC d 3, then GS V B 0
-        assertArrayEquals(byteArrayOf(0x1B, 0x64, 3, 0x1D, 0x56, 0x42, 0x00), bytes.copyOfRange(14, 21))
-        assertEquals(21, bytes.size)
+        assertArrayEquals(byteArrayOf(0x1B, 0x64, 3, 0x1D, 0x56, 0x42, 0x00), bytes.copyOfRange(17, 24))
+        assertEquals(24, bytes.size)
     }
 
     @Test fun tallImagesAreSplitIntoBands() {
@@ -61,14 +61,14 @@ class EscPosEncoderTest {
         val bytes = EscPosEncoder.encode(solid(8, height), cut = false)
         val headers = (0 until bytes.size - 3).count { bytes[it] == 0x1D.toByte() && bytes[it + 1] == 0x76.toByte() && bytes[it + 2] == 0x30.toByte() }
         assertEquals(3, headers)
-        // 2 init + 3*8 headers + data + 3 feed
-        assertEquals(2 + 3 * 8 + height + 3, bytes.size)
+        // 5 init + 3*8 headers + data + 3 feed
+        assertEquals(5 + 3 * 8 + height + 3, bytes.size)
     }
 
     @Test fun copiesAreClamped() {
         val one = EscPosEncoder.encode(solid(8, 1), copies = 1, cut = false).size
         val many = EscPosEncoder.encode(solid(8, 1), copies = 999, cut = false).size
-        assertEquals(2 + (one - 2) * MAX_COPIES, many)
+        assertEquals(5 + (one - 5) * MAX_COPIES, many)
     }
 }
 
