@@ -7,6 +7,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -29,6 +33,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sopifo.printagent.ui.screens.DiagnosticsScreen
+import com.sopifo.printagent.ui.screens.HelpScreen
 import com.sopifo.printagent.ui.screens.HistoryScreen
 import com.sopifo.printagent.ui.screens.HomeScreen
 import com.sopifo.printagent.ui.screens.PendingScreen
@@ -48,15 +53,29 @@ enum class Tab(val title: String, val icon: ImageVector) {
 @Composable
 fun AppRoot(vm: AgentViewModel, onRequestPermissions: () -> Unit) {
     val registered by vm.registered.collectAsStateWithLifecycle()
+    var showHelp by rememberSaveable { mutableStateOf(false) }
+    if (showHelp) {
+        HelpScreen(onClose = { showHelp = false })
+        return
+    }
     when (registered) {
         null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        false -> RegistrationScreen(vm)
-        true -> MainTabs(vm, onRequestPermissions)
+        false -> RegistrationScreen(vm, onHelp = { showHelp = true })
+        true -> MainTabs(vm, onRequestPermissions, onHelp = { showHelp = true })
     }
 }
 
+/** The "i" button that opens the printer setup help page. */
 @Composable
-private fun MainTabs(vm: AgentViewModel, onRequestPermissions: () -> Unit) {
+fun HelpButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(onClick = onClick, modifier = modifier.testTag("help_button")) {
+        Icon(Icons.Outlined.Info, contentDescription = "Printer setup help")
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MainTabs(vm: AgentViewModel, onRequestPermissions: () -> Unit, onHelp: () -> Unit) {
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     val snackbar = remember { SnackbarHostState() }
     val message by vm.message.collectAsStateWithLifecycle()
@@ -68,6 +87,12 @@ private fun MainTabs(vm: AgentViewModel, onRequestPermissions: () -> Unit) {
     }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Sopifo Print") },
+                actions = { HelpButton(onHelp) },
+            )
+        },
         bottomBar = {
             NavigationBar {
                 Tab.entries.forEach { t ->

@@ -29,7 +29,7 @@ object LogShare {
         val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))
         val out = File(dir, "sopifo-agent-log-$stamp.txt")
         out.bufferedWriter().use { w ->
-            w.appendLine("Sopifo Print Agent log")
+            w.appendLine("Sopifo Print log")
             w.appendLine("Exported: ${LocalDateTime.now()}")
             w.appendLine("Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), ${Build.MANUFACTURER} ${Build.MODEL}")
             header.forEach { (k, v) -> w.appendLine("$k: ${v ?: "—"}") }
@@ -47,7 +47,7 @@ object LogShare {
     /** Must be called with an Activity context. */
     fun send(context: Context, file: File) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.logs", file)
-        val text = "Sopifo Print Agent log (${file.name})"
+        val text = "Sopifo Print log (${file.name})"
         fun baseIntent() = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
