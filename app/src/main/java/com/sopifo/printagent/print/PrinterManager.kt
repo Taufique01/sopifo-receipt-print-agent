@@ -26,8 +26,10 @@ enum class PrinterState(val wire: String) {
 }
 
 /**
- * Owns all printer I/O. One mutex per printer serialises jobs, probes and test prints so they
- * never interleave bytes on the same link. Status is "last known reachability": updated by every
+ * Owns all printer I/O. One mutex per physical printer (Bluetooth address, not role) serialises
+ * jobs, probes and test prints so they never interleave bytes on the same link. One printer may
+ * serve both roles (an ESC/POS roll printer printing receipts and labels); most printers accept
+ * a single RFCOMM connection, so a receipt and a label must queue rather than connect at once. Status is "last known reachability": updated by every
  * job, by probes (service start, Bluetooth on, heartbeat) and by ACL link events.
  *
  * Heartbeat probes back off while a printer is unreachable (phone carried away from it), since
@@ -45,7 +47,9 @@ class PrinterManager(
         fun hasPermission(): Boolean
     }
 
-    private val locks = PrinterRole.entries.associateWith { Mutex() }
+    private val locks = ConcurrentHashMap<String, Mutex>()
+    private fun lockFor(printer: PrinterConfigEntity): Mutex =
+        locks.computeIfAbsent(printer.macAddress.uppercase()) { Mutex() }
     private val _status = MutableStateFlow(PrinterRole.entries.associateWith { PrinterState.NOT_CONFIGURED })
     val status: StateFlow<Map<PrinterRole, PrinterState>> = _status.asStateFlow()
 
@@ -66,7 +70,7 @@ class PrinterManager(
         shouldContinue: () -> Boolean = { true },
         beforeWrite: suspend () -> Unit = {},
     ) {
-        locks.getValue(printer.role).withLock {
+        lockFor(printer).withLock {
             var lastError: PrintException? = null
             for (attempt in 1..attempts) {
                 if (!shouldContinue()) break
@@ -76,7 +80,7 @@ class PrinterManager(
                     throw e
                 } catch (e: PrintException) {
                     lastError = e
-                    setStatus(printer.role, stateFor(e))
+                    setStatus(printer, stateFor(e))
                     AppLog.w(TAG, "Open failed", e, "role" to printer.role, "attempt" to attempt, "failure" to e.failure)
                     if (!e.failure.retryable) throw e
                     if (attempt < attempts) delay(backoffMs(attempt))
@@ -87,12 +91,12 @@ class PrinterManager(
                     continue
                 }
                 try {
-                    setStatus(printer.role, PrinterState.CONNECTED)
+                    setStatus(printer, PrinterState.CONNECTED)
                     beforeWrite()
                     connection.write(data)
                     return
                 } catch (e: PrintException) {
-                    setStatus(printer.role, PrinterState.DISCONNECTED)
+                    setStatus(printer, PrinterState.DISCONNECTED)
                     // Bytes may have partially reached the printer; do not silently retry the write.
                     throw e
                 } finally {
@@ -110,7 +114,7 @@ class PrinterManager(
             setStatus(role, PrinterState.NOT_CONFIGURED)
             return PrinterState.NOT_CONFIGURED
         }
-        val lock = locks.getValue(role)
+        val lock = lockFor(printer)
         // A job is using the printer right now, so it is evidently reachable; don't queue behind it.
         if (!lock.tryLock()) return _status.value.getValue(role)
         return try {
@@ -124,8 +128,10 @@ class PrinterManager(
             } catch (e: Exception) {
                 PrinterState.DISCONNECTED
             }
-            setStatus(role, state)
-            if (state == PrinterState.DISCONNECTED) recordProbeFailure(role) else probeBackoff.remove(role)
+            setStatus(printer, state)
+            // Back off every role on this printer, or a shared printer is probed once per role.
+            val roles = rolesSharing(printer)
+            if (state == PrinterState.DISCONNECTED) roles.forEach(::recordProbeFailure) else roles.forEach { probeBackoff.remove(it) }
             state
         } finally {
             lock.unlock()
@@ -134,12 +140,16 @@ class PrinterManager(
 
     /** [respectBackoff] is for the periodic heartbeat; user- and event-driven probes always run. */
     suspend fun probeAll(respectBackoff: Boolean = false) {
+        val probed = HashSet<String>()
         for (role in PrinterRole.entries) {
             try {
                 if (respectBackoff && !probeDue(role)) {
                     AppLog.d(TAG, "Probe skipped (backoff)", "role" to role)
                     continue
                 }
+                // A printer shared by both roles is probed once; probe() updates both roles.
+                val mac = printerDao.get(role)?.macAddress?.uppercase()
+                if (mac != null && !probed.add(mac)) continue
                 probe(role)
             } catch (e: CancellationException) {
                 throw e
@@ -185,7 +195,7 @@ class PrinterManager(
     /** Link-level event from the system (ACL connected/disconnected) for a configured printer. */
     suspend fun onLinkEvent(macAddress: String, connected: Boolean) {
         val printer = printerDao.getAll().firstOrNull { it.macAddress.equals(macAddress, ignoreCase = true) } ?: return
-        setStatus(printer.role, if (connected) PrinterState.CONNECTED else PrinterState.DISCONNECTED)
+        setStatus(printer, if (connected) PrinterState.CONNECTED else PrinterState.DISCONNECTED)
     }
 
     suspend fun testPrint(role: PrinterRole) {
@@ -196,6 +206,17 @@ class PrinterManager(
     /** Image decoding/thresholding is CPU-bound; keep it off the main thread whoever calls. */
     suspend fun buildFromPng(png: ByteArray, printer: PrinterConfigEntity, copies: Int): PrintData =
         withContext(Dispatchers.Default) { builder.fromPng(png, printer, copies) }
+
+    /** Every role configured with this printer's Bluetooth address (both, for a shared printer). */
+    private suspend fun rolesSharing(printer: PrinterConfigEntity): List<PrinterRole> =
+        printerDao.getAll()
+            .filter { it.macAddress.equals(printer.macAddress, ignoreCase = true) }
+            .map { it.role }
+            .ifEmpty { listOf(printer.role) }
+
+    private suspend fun setStatus(printer: PrinterConfigEntity, state: PrinterState) {
+        rolesSharing(printer).forEach { setStatus(it, state) }
+    }
 
     private fun setStatus(role: PrinterRole, state: PrinterState) {
         // Reachable again (job printed, link event, probe): back to probing every heartbeat.
