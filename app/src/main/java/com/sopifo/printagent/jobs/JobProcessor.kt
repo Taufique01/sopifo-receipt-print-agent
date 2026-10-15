@@ -17,6 +17,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -283,6 +284,8 @@ class JobProcessor(
         private val done = HashSet<String>()
         private var latest: PrintBatchDto? = null
         private var fetch: Deferred<PrintBatchDto?>? = null
+        /** Completion reports go out one after another, so the backend sees them in print order. */
+        private var lastReport: Job? = null
         private var printed = 0
 
         suspend fun run(): BatchOutcome {
@@ -318,12 +321,7 @@ class JobProcessor(
                 try {
                     printers.session(printer, shouldContinue = ::fresh) { connection ->
                         while (true) {
-                            if (queue.isEmpty()) {
-                                // Keep the link open briefly for jobs the in-flight fetch brings.
-                                val more = withTimeoutOrNull(KEEP_OPEN_MS) { awaitFetch() } ?: break
-                                absorb(more)
-                                if (queue.isEmpty() || statusOutcome() != null) break
-                            }
+                            if (queue.isEmpty() && !waitForMore()) break
                             val job = queue.firstEntry()!!.value
                             if (JobType.fromWire(job.type)?.printer != type.printer) break
                             if (statusOutcome() != null) break
@@ -364,9 +362,31 @@ class JobProcessor(
             jobs.markPrinted(job.id)
             jobs.recordRecent(job.id, type.wireName, RecentJobStatus.PRINTED, data.note)
             printed++
-            scope.launch { reportCompletedNow(job.id) }
+            val previous = lastReport
+            lastReport = scope.launch {
+                previous?.join()
+                reportCompletedNow(job.id)
+            }
             refreshInBackground()
         }
+
+        /**
+         * Keeps the printer link open while the backend renders the next jobs: fetches until
+         * one arrives. False when the batch is finished or stopped, or nothing came in time.
+         */
+        private suspend fun waitForMore(): Boolean = withTimeoutOrNull(KEEP_OPEN_MS) {
+            while (queue.isEmpty()) {
+                val more = awaitFetch() ?: return@withTimeoutOrNull false
+                absorb(more)
+                if (statusOutcome() != null) return@withTimeoutOrNull false
+                if (queue.isEmpty()) {
+                    if (more.renderedAll) return@withTimeoutOrNull false
+                    // Reports of the jobs just printed haven't landed yet; ask again shortly.
+                    delay(IDLE_FETCH_DELAY_MS / 3)
+                }
+            }
+            true
+        } ?: false
 
         /** Queues what the last background fetch brought, then fetches again (renders more). */
         private suspend fun refreshInBackground() {

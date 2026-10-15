@@ -28,6 +28,18 @@ class JobFreshnessTest {
         assertFalse(JobFreshness.isFresh(now.plusSeconds(3600), now))
     }
 
+    @Test fun batchJobsAreFreshUntilTheBatchExpires() {
+        // Rendered 10 minutes ago, but the phone kept fetching, so the batch is still live.
+        assertTrue(JobFreshness.isFresh(now.minusSeconds(600), now.plusSeconds(30), now))
+        assertTrue(JobFreshness.isFresh(now.minusSeconds(600), now, now))
+        assertFalse(JobFreshness.isFresh(now.minusSeconds(10), now.minusSeconds(1), now))
+    }
+
+    @Test fun withoutExpiryTheTwoMinuteRuleApplies() {
+        assertTrue(JobFreshness.isFresh(now.minusSeconds(60), null, now))
+        assertFalse(JobFreshness.isFresh(now.minusSeconds(121), null, now))
+    }
+
     @Test fun parsesCommonBackendTimestampFormats() {
         val expected = Instant.parse("2026-09-30T11:59:30Z")
         assertEquals(expected, JobFreshness.parseTimestamp("2026-09-30T11:59:30Z"))

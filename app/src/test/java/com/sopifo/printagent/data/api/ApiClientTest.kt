@@ -49,6 +49,41 @@ class ApiClientTest {
         assertTrue(req.body.readUtf8().contains("\"token\":\"tok\""))
     }
 
+    @Test fun everyRequestAnnouncesBatchSupport() = runTest {
+        server.enqueue(MockResponse().setBody("{}"))
+        client.heartbeat(HeartbeatRequest(55, PrinterStatusPayload("connected", "connected"), "1.1", "2026-10-16T00:00:00Z"))
+        assertEquals("batch", server.takeRequest().getHeader("X-Agent-Features"))
+        server.enqueue(MockResponse().setBody("""{"device_id":"d","device_jwt":"j"}"""))
+        client.register(baseUrl, RegisterRequest(token = "tok", deviceName = "P", appVersion = "1"))
+        assertEquals("batch", server.takeRequest().getHeader("X-Agent-Features"))
+    }
+
+    @Test fun getBatchParsesJobsAndExpiry() = runTest {
+        server.enqueue(
+            MockResponse().setBody(
+                """{"id":"b1","status":"active","expires_at":"2026-10-16T10:02:00Z","total":3,"rendered_all":false,
+                "jobs":[{"id":"j1","type":"label","status":"pending","image_url":"$baseUrl/i/1.png","created_at":"2026-10-16T10:00:00Z","expires_at":"2026-10-16T10:02:00Z","batch_index":0,"extra":true}]}""",
+            ),
+        )
+        val batch = client.getBatch("b1")
+        assertEquals("/api/print-batches/b1", server.takeRequest().path)
+        assertEquals("active", batch.status)
+        assertEquals(3, batch.total)
+        assertFalse(batch.renderedAll)
+        assertEquals("j1", batch.jobs.single().id)
+        assertEquals(0, batch.jobs.single().batchIndex)
+        assertEquals("2026-10-16T10:02:00Z", batch.jobs.single().expiresAt)
+    }
+
+    @Test fun pendingJobsListsLiveBatchesAndDropsInvalidIds() = runTest {
+        server.enqueue(MockResponse().setBody("""{"jobs":[],"batches":["b_ok","../evil",42,"b_two"]}"""))
+        val result = client.getPendingJobs()
+        assertEquals(listOf("b_ok", "b_two"), result.batches)
+        // Old backends send a bare array: no batches.
+        server.enqueue(MockResponse().setBody("[]"))
+        assertEquals(emptyList<String>(), client.getPendingJobs().batches)
+    }
+
     @Test fun registerAcceptsDataEnvelopeAndAlternateNames() = runTest {
         server.enqueue(MockResponse().setBody("""{"data":{"id":"dev_2","token":"jwt_2","store_name":"S"}}"""))
         val res = client.register(baseUrl, RegisterRequest(token = "tok", deviceName = "P", appVersion = "1"))

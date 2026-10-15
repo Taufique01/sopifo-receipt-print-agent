@@ -8,7 +8,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.ConnectionPool
@@ -131,7 +130,7 @@ class ApiClient(
             }
         }
         val batches = ((element as? JsonObject)?.get("batches") as? JsonArray)
-            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf(UrlPolicy::isValidJobId) }
+            ?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content?.takeIf(UrlPolicy::isValidJobId) }
             .orEmpty()
         return PendingJobsResult(jobs, invalid, batches)
     }
