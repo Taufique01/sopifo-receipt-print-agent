@@ -51,6 +51,21 @@ class JobWorker(context: Context, params: WorkerParameters) : AgentWorker(contex
     }
 }
 
+class BatchWorker(context: Context, params: WorkerParameters) : AgentWorker(context, params) {
+    override suspend fun work(): Result {
+        val batchId = inputData.getString(KEY_BATCH_ID) ?: return Result.failure()
+        val source = inputData.getString(KEY_SOURCE) ?: "fcm"
+        val outcome = container.processor.processBatch(batchId, source)
+        AppLog.i("BatchWorker", "Batch handled", "batch" to batchId, "outcome" to outcome)
+        return Result.success()
+    }
+
+    companion object {
+        const val KEY_BATCH_ID = "batch_id"
+        const val KEY_SOURCE = "source"
+    }
+}
+
 class PendingSyncWorker(context: Context, params: WorkerParameters) : AgentWorker(context, params) {
     override suspend fun work(): Result {
         val reason = inputData.getString(KEY_REASON) ?: "unknown"

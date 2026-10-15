@@ -38,6 +38,21 @@ class WorkScheduler(context: Context) : JobReporter {
     }
 
     /**
+     * Bulk print batch. KEEP: a second wake-up for a batch already printing is ignored. If the
+     * OS stops the worker mid-batch it is retried and resumes from the backend's state.
+     */
+    fun enqueueBatch(batchId: String, source: String) = safely("enqueueBatch") {
+        val request = OneTimeWorkRequestBuilder<BatchWorker>()
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .setConstraints(online)
+            .setInputData(workDataOf(BatchWorker.KEY_BATCH_ID to batchId, BatchWorker.KEY_SOURCE to source))
+            .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
+            .addTag(TAG_AGENT)
+            .build()
+        wm.enqueueUniqueWork("batch-$batchId", ExistingWorkPolicy.KEEP, request)
+    }
+
+    /**
      * Pending-job recovery. Triggers that fire together (boot + network + screen on) collapse
      * into one request through the debounce window and the unique-work KEEP policy.
      * Frequent triggers (screen on) pass a longer [minIntervalMs]: they are skipped when any

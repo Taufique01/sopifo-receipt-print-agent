@@ -36,8 +36,10 @@ The spec defines `GET /api/print-jobs/pending` and `POST /api/print-jobs/{id}/ca
 other endpoints below are what this app implements. **Backend: please confirm or adjust them.**
 They are all in one place: [ApiClient.kt](app/src/main/java/com/sopifo/printagent/data/api/ApiClient.kt).
 
-Every call except `register` sends `Authorization: Bearer <device_jwt>`. Responses may be bare
-objects or wrapped in `{"data": …}`, and unknown fields are ignored.
+Every call except `register` sends `Authorization: Bearer <device_jwt>`, and every call sends
+`X-Agent-Features: batch` (this app can print bulk batches; the backend only sends batches to
+devices that announced it). Responses may be bare objects or wrapped in `{"data": …}`, and
+unknown fields are ignored.
 
 | Method & path | Body → Response |
 |---|---|
@@ -45,7 +47,8 @@ objects or wrapped in `{"data": …}`, and unknown fields are ignored.
 | `POST /api/devices/heartbeat` | `{battery_percent, printer_status:{receipt,label}, app_version, last_seen}` every 5 min. Printer values: `connected`, `disconnected`, `bluetooth_off`, `no_permission`, `not_configured` |
 | `POST /api/devices/fcm-token` | `{fcm_token}`, sent on registration and whenever Firebase rotates the token |
 | `GET /api/print-jobs/{id}` | → `{id, type, status, image_url, created_at, copies?}` |
-| `GET /api/print-jobs/pending` | → `[job…]` or `{jobs:[…]}`: jobs assigned to this device, `pending`, < 120 s old |
+| `GET /api/print-jobs/pending` | → `[job…]` or `{jobs:[…], batches?:[id…]}`: jobs assigned to this device, `pending`, < 120 s old, plus live bulk batches to fetch |
+| `GET /api/print-batches/{id}` | → `{id, status, expires_at, total, rendered_all, jobs:[{…job, expires_at, batch_index}]}`: the batch's waiting jobs in print order. Each fetch renders the next few and extends `expires_at` |
 | `POST /api/print-jobs/{id}/complete` | `{printed_at}` |
 | `POST /api/print-jobs/{id}/fail` | `{error}` (human-readable reason) |
 | `POST /api/print-jobs/{id}/cancel` | `{}`, from the Pending Jobs screen (single job only) |
@@ -55,6 +58,11 @@ Notes for the backend:
   2-minute rule on **server time**, taken from the HTTP `Date` header, so a phone with a wrong
   clock still behaves correctly.
 - A job is only printed when its `status` is `pending`.
+- **Bulk print:** FCM `{"type":"print_batch","batch_id":…}`. The agent fetches the batch, prints
+  its jobs in `batch_index` order over one printer connection, reports each job as it prints and
+  re-fetches after each one (so the backend renders ahead). Batch jobs are printable until the
+  batch's `expires_at` instead of the 2-minute rule; the backend keeps extending it while the
+  phone fetches. The batch is done when `rendered_all` is true and no jobs are left.
 - `image_url` must be HTTPS. The JWT is attached only when the image is served from the API host
   itself, never to a CDN or storage host. Images are capped at 5 MB and 4096 px wide.
 - Report calls are retried with backoff for hours. `404/409/410/422` on a report is treated as

@@ -7,6 +7,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.ConnectionPool
@@ -34,7 +36,12 @@ class ApiException(
     val notFound: Boolean get() = httpCode == 404 || httpCode == 410
 }
 
-data class PendingJobsResult(val jobs: List<PrintJobDto>, val invalidEntries: Int)
+data class PendingJobsResult(
+    val jobs: List<PrintJobDto>,
+    val invalidEntries: Int,
+    /** Live bulk print batches for this device (fetched with [ApiClient.getBatch]). */
+    val batches: List<String> = emptyList(),
+)
 
 /**
  * Thin, defensive client for the Sopifo Cloud print API. All calls have hard timeouts, all
@@ -76,6 +83,10 @@ class ApiClient(
 
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
+    companion object {
+        const val AGENT_FEATURES = "batch"
+    }
+
     suspend fun register(baseUrl: String, body: RegisterRequest): RegisterResponse {
         val base = urlPolicy.parseAllowed(baseUrl) ?: throw ApiException(null, "Server URL not allowed: $baseUrl")
         val element = execute(post(base, "api/devices/register", json.encodeToString(RegisterRequest.serializer(), body), auth = false))
@@ -96,6 +107,12 @@ class ApiClient(
         return decode(PrintJobDto.serializer(), unwrap(element, "data", "job"))
     }
 
+    /** A bulk print batch: its waiting jobs in print order. Fetching also renders the next ones. */
+    suspend fun getBatch(batchId: String): PrintBatchDto {
+        require(UrlPolicy.isValidJobId(batchId)) { "Invalid batch id" }
+        return decode(PrintBatchDto.serializer(), execute(get(base(), "api/print-batches/$batchId")))
+    }
+
     /** Pending jobs for this device. Malformed entries are dropped individually, not the whole batch. */
     suspend fun getPendingJobs(): PendingJobsResult {
         val element = execute(get(base(), "api/print-jobs/pending"))
@@ -113,7 +130,10 @@ class ApiClient(
                 null
             }
         }
-        return PendingJobsResult(jobs, invalid)
+        val batches = ((element as? JsonObject)?.get("batches") as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf(UrlPolicy::isValidJobId) }
+            .orEmpty()
+        return PendingJobsResult(jobs, invalid, batches)
     }
 
     suspend fun completeJob(jobId: String, printedAtIso: String) {
@@ -177,6 +197,8 @@ class ApiClient(
 
     private fun authorized(builder: Request.Builder, auth: Boolean): Request {
         builder.header("Accept", "application/json")
+        // Tells the backend this app can print bulk batches; older apps don't send it.
+        builder.header("X-Agent-Features", AGENT_FEATURES)
         if (auth) {
             val token = tokenProvider() ?: throw ApiException(401, "No device session")
             builder.header("Authorization", "Bearer $token")

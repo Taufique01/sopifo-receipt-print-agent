@@ -69,42 +69,58 @@ class PrinterManager(
         attempts: Int = 3,
         shouldContinue: () -> Boolean = { true },
         beforeWrite: suspend () -> Unit = {},
-    ) {
-        lockFor(printer).withLock {
-            var lastError: PrintException? = null
-            for (attempt in 1..attempts) {
-                if (!shouldContinue()) break
-                val connection = try {
-                    transport.open(printer)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: PrintException) {
-                    lastError = e
-                    setStatus(printer, stateFor(e))
-                    AppLog.w(TAG, "Open failed", e, "role" to printer.role, "attempt" to attempt, "failure" to e.failure)
-                    if (!e.failure.retryable) throw e
-                    if (attempt < attempts) delay(backoffMs(attempt))
-                    continue
-                } catch (e: Exception) {
-                    lastError = PrintException(PrintFailure.CONNECT_FAILED, e.message ?: "open failed", e)
-                    if (attempt < attempts) delay(backoffMs(attempt))
-                    continue
-                }
-                try {
-                    setStatus(printer, PrinterState.CONNECTED)
-                    beforeWrite()
-                    connection.write(data)
-                    return
-                } catch (e: PrintException) {
-                    setStatus(printer, PrinterState.DISCONNECTED)
-                    // Bytes may have partially reached the printer; do not silently retry the write.
-                    throw e
-                } finally {
-                    connection.close()
-                }
-            }
-            throw lastError ?: PrintException(PrintFailure.CONNECT_FAILED, "Printing aborted")
+    ) = session(printer, attempts, shouldContinue) { connection ->
+        beforeWrite()
+        connection.write(data)
+    }
+
+    /**
+     * Holds the printer's lock and one open connection while [block] writes any number of jobs
+     * (bulk print): the Bluetooth connect, the slowest step, happens once instead of per job.
+     * Opening retries like [print]; a failed write is never retried (bytes may have printed).
+     */
+    suspend fun <T> session(
+        printer: PrinterConfigEntity,
+        attempts: Int = 3,
+        shouldContinue: () -> Boolean = { true },
+        block: suspend (PrinterConnection) -> T,
+    ): T = lockFor(printer).withLock {
+        val connection = open(printer, attempts, shouldContinue)
+        try {
+            setStatus(printer, PrinterState.CONNECTED)
+            block(connection)
+        } catch (e: PrintException) {
+            setStatus(printer, PrinterState.DISCONNECTED)
+            throw e
+        } finally {
+            connection.close()
         }
+    }
+
+    private suspend fun open(
+        printer: PrinterConfigEntity,
+        attempts: Int,
+        shouldContinue: () -> Boolean,
+    ): PrinterConnection {
+        var lastError: PrintException? = null
+        for (attempt in 1..attempts) {
+            if (!shouldContinue()) break
+            try {
+                return transport.open(printer)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PrintException) {
+                lastError = e
+                setStatus(printer, stateFor(e))
+                AppLog.w(TAG, "Open failed", e, "role" to printer.role, "attempt" to attempt, "failure" to e.failure)
+                if (!e.failure.retryable) throw e
+                if (attempt < attempts) delay(backoffMs(attempt))
+            } catch (e: Exception) {
+                lastError = PrintException(PrintFailure.CONNECT_FAILED, e.message ?: "open failed", e)
+                if (attempt < attempts) delay(backoffMs(attempt))
+            }
+        }
+        throw lastError ?: PrintException(PrintFailure.CONNECT_FAILED, "Printing aborted")
     }
 
     /** Opens and immediately closes the link to learn whether the printer is reachable. */

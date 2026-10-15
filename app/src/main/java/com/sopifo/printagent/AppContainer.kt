@@ -89,7 +89,11 @@ class AppContainer(private val context: Context) {
     val jobs: JobRepository by lazy { JobRepository(db.printedJobDao(), db.recentJobDao()) }
 
     val processor: JobProcessor by lazy {
-        JobProcessor(api, jobs, printers, scheduler, serverClock, onBackendSync = { device.markSynced() })
+        JobProcessor(
+            api, jobs, printers, scheduler, serverClock,
+            onBatchesPending = { ids -> ids.forEach { scheduler.enqueueBatch(it, "pending_sync") } },
+            onBackendSync = { device.markSynced() },
+        )
     }
 
     /**
@@ -119,6 +123,17 @@ class AppContainer(private val context: Context) {
             scheduler.enqueueJob(jobId!!, source)
         } else {
             AppLog.w("Wake", "Wake-up without valid job id; syncing pending", null, "source" to source)
+            scheduler.enqueuePendingSync("${source}_wake", force = true)
+        }
+    }
+
+    /** FCM wake-up for a bulk print: one worker fetches and prints the whole batch. */
+    fun handleBatchWake(batchId: String, source: String) {
+        if (UrlPolicy.isValidJobId(batchId)) {
+            AppLog.i("Wake", "Batch wake-up", "batch" to batchId, "source" to source)
+            scheduler.enqueueBatch(batchId, source)
+        } else {
+            AppLog.w("Wake", "Batch wake-up with invalid id; syncing pending", null, "source" to source)
             scheduler.enqueuePendingSync("${source}_wake", force = true)
         }
     }

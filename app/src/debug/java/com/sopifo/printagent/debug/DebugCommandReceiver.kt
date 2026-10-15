@@ -55,6 +55,7 @@ class DebugCommandReceiver : BroadcastReceiver() {
                 c.printers.probeAll()
             }
             "wake" -> c.handleWake(intent.getStringExtra("job_id"), "debug_fcm")
+            "wake_batch" -> c.handleBatchWake(intent.getStringExtra("batch_id").orEmpty(), "debug_fcm")
             "sync" -> c.scheduler.enqueuePendingSync("debug", force = true)
             "heartbeat" -> c.scheduler.triggerHeartbeatNow()
             "start_service" -> ServiceController.start(context, "debug")

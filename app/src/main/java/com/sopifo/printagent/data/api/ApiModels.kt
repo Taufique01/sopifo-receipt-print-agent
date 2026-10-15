@@ -56,4 +56,22 @@ data class PrintJobDto(
     @SerialName("image_url") val imageUrl: String? = null,
     @SerialName("created_at") val createdAt: String? = null,
     val copies: Int = 1,
+    /** Bulk print jobs: printable until this (server time) instead of the 2-minute rule. */
+    @SerialName("expires_at") val expiresAt: String? = null,
+    @SerialName("batch_index") val batchIndex: Int? = null,
+)
+
+/**
+ * A bulk print as the phone sees it: the jobs waiting to print, in order. Each fetch makes the
+ * backend render a few more and keeps the batch alive; `renderedAll` with no jobs means done.
+ */
+@Serializable
+data class PrintBatchDto(
+    val id: String,
+    /** active | cancelled | expired */
+    val status: String,
+    @SerialName("expires_at") val expiresAt: String? = null,
+    val total: Int = 0,
+    @SerialName("rendered_all") val renderedAll: Boolean = false,
+    val jobs: List<PrintJobDto> = emptyList(),
 )

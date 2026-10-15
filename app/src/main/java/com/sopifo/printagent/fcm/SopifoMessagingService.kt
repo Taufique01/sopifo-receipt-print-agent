@@ -6,8 +6,9 @@ import com.sopifo.printagent.SopifoApp
 import com.sopifo.printagent.core.AppLog
 
 /**
- * FCM is only a wake-up signal: `{"job_id": "job_123"}`. Any other payload keys are ignored —
- * job content, images and printer commands are always fetched from the backend with the device JWT.
+ * FCM is only a wake-up signal: `{"job_id": "job_123"}`, or `{"type": "print_batch",
+ * "batch_id": "…"}` for a bulk print. Any other payload keys are ignored — job content, images
+ * and printer commands are always fetched from the backend with the device JWT.
  */
 class SopifoMessagingService : FirebaseMessagingService() {
 
@@ -15,7 +16,12 @@ class SopifoMessagingService : FirebaseMessagingService() {
         try {
             val container = (application as SopifoApp).container
             container.fcm.onMessageReceived()
-            container.handleWake(message.data["job_id"], source = "fcm")
+            val batchId = message.data["batch_id"]
+            if (message.data["type"] == "print_batch" && batchId != null) {
+                container.handleBatchWake(batchId, source = "fcm")
+            } else {
+                container.handleWake(message.data["job_id"], source = "fcm")
+            }
         } catch (t: Throwable) {
             AppLog.e(TAG, "FCM message handling failed", t)
         }

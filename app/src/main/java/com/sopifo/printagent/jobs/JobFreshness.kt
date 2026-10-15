@@ -27,4 +27,13 @@ object JobFreshness {
         val age = ageSeconds(createdAt, now)
         return age <= MAX_AGE_SECONDS && age >= -FUTURE_TOLERANCE_SECONDS
     }
+
+    /**
+     * Bulk print jobs carry the batch's `expires_at`, which the backend extends while this phone
+     * keeps fetching the batch: a long batch keeps printing, an abandoned one stops.
+     */
+    fun isFresh(createdAt: Instant, expiresAt: Instant?, now: Instant): Boolean {
+        if (expiresAt == null) return isFresh(createdAt, now)
+        return !now.isAfter(expiresAt) && ageSeconds(createdAt, now) >= -FUTURE_TOLERANCE_SECONDS
+    }
 }
