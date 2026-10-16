@@ -71,6 +71,12 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
 
     val appVersion: String get() = c.systemInfo.appVersion
 
+    /** "Send logs to support": uploads now; returns the reference code. Throws when offline. */
+    suspend fun uploadLogs(): String = c.logUploader.upload("button")
+
+    /** The log bundle file, for sharing it by hand. */
+    suspend fun logBundle() = c.logUploader.buildBundle()
+
     init {
         viewModelScope.launch(Dispatchers.IO) { _registered.value = c.device.hasSession() }
         refreshDeviceFacts()

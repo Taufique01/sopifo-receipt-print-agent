@@ -4,6 +4,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.sopifo.printagent.SopifoApp
 import com.sopifo.printagent.core.AppLog
+import com.sopifo.printagent.work.WorkScheduler
 
 /**
  * FCM is only a wake-up signal: `{"job_id": "job_123"}`, or `{"type": "print_batch",
@@ -17,7 +18,10 @@ class SopifoMessagingService : FirebaseMessagingService() {
             val container = (application as SopifoApp).container
             container.fcm.onMessageReceived()
             val batchId = message.data["batch_id"]
-            if (message.data["type"] == "print_batch" && batchId != null) {
+            if (message.data["type"] == "upload_logs") {
+                // Support asked for this phone's logs.
+                container.scheduler.enqueueLogUpload(WorkScheduler.LOG_REQUEST)
+            } else if (message.data["type"] == "print_batch" && batchId != null) {
                 container.handleBatchWake(batchId, source = "fcm")
             } else {
                 container.handleWake(message.data["job_id"], source = "fcm")

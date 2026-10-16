@@ -31,9 +31,7 @@ import com.sopifo.printagent.core.LogShare
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.fcm.FcmState
 import com.sopifo.printagent.ui.AgentViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 // BatteryLife: an unattended print agent must not be deferred by Doze; see README "Battery exemption".
 @SuppressLint("BatteryLife")
@@ -49,6 +47,9 @@ fun DiagnosticsScreen(vm: AgentViewModel) {
     val ignoringOpt by vm.ignoringBatteryOptimizations.collectAsStateWithLifecycle()
     var confirmReset by remember { mutableStateOf(false) }
     var sendingLogs by remember { mutableStateOf(false) }
+    var sharingLogs by remember { mutableStateOf(false) }
+    /** Result of the last "Send logs to support": the reference code, or why it failed. */
+    var logResult by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     Column(
@@ -92,29 +93,41 @@ fun DiagnosticsScreen(vm: AgentViewModel) {
         OutlinedButton(onClick = {
             runCatching { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri())) }
         }) { Text("App settings (auto-launch, battery)") }
+        // Uploads straight to Sopifo support (no other app involved); the seller gets a code to quote.
         OutlinedButton(
             enabled = !sendingLogs,
             modifier = Modifier.testTag("diag_send_logs"),
             onClick = {
                 sendingLogs = true
+                logResult = null
                 scope.launch {
-                    try {
-                        val header = mapOf(
-                            "App version" to vm.appVersion,
-                            "Store" to config?.storeName,
-                            "Device name" to config?.deviceName,
-                            "Device ID" to config?.deviceId,
-                        )
-                        val file = withContext(Dispatchers.IO) { LogShare.buildFile(context, header) }
-                        LogShare.send(context, file)
+                    logResult = try {
+                        "Sent to support. Reference: #${vm.uploadLogs()}"
                     } catch (e: Exception) {
                         AppLog.e("Diagnostics", "Sending logs failed", e)
+                        "Could not send logs (${e.message ?: "no connection"}). Check the internet and try again, or share the file below."
                     } finally {
                         sendingLogs = false
                     }
                 }
             },
-        ) { Text(if (sendingLogs) "Preparing logs…" else "Send logs to support (WhatsApp)") }
+        ) { Text(if (sendingLogs) "Sending logs…" else "Send logs to support") }
+        logResult?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("diag_logs_result")) }
+        TextButton(
+            enabled = !sharingLogs,
+            onClick = {
+                sharingLogs = true
+                scope.launch {
+                    try {
+                        LogShare.send(context, vm.logBundle())
+                    } catch (e: Exception) {
+                        AppLog.e("Diagnostics", "Sharing logs failed", e)
+                    } finally {
+                        sharingLogs = false
+                    }
+                }
+            },
+        ) { Text("Share log file (WhatsApp…)") }
         OutlinedButton(onClick = { confirmReset = true }) { Text("Re-register device", color = MaterialTheme.colorScheme.error) }
     }
 

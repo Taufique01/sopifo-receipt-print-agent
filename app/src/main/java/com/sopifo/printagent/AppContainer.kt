@@ -2,6 +2,7 @@ package com.sopifo.printagent
 
 import android.content.Context
 import com.sopifo.printagent.core.AppLog
+import com.sopifo.printagent.core.LogUploader
 import com.sopifo.printagent.data.DeviceRepository
 import com.sopifo.printagent.data.SystemInfo
 import com.sopifo.printagent.data.api.ApiClient
@@ -85,6 +86,8 @@ class AppContainer(private val context: Context) {
             },
         )
     }
+
+    val logUploader: LogUploader by lazy { LogUploader(context, api, device, printers, systemInfo.appVersion) }
 
     val jobs: JobRepository by lazy { JobRepository(db.printedJobDao(), db.recentJobDao()) }
 

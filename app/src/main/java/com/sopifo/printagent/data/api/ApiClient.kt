@@ -92,8 +92,21 @@ class ApiClient(
         return decode(RegisterResponse.serializer(), unwrap(element, "data", "device"))
     }
 
-    suspend fun heartbeat(body: HeartbeatRequest) {
-        execute(post(base(), "api/devices/heartbeat", json.encodeToString(HeartbeatRequest.serializer(), body)))
+    /** Returns true when support asked for this phone's logs (missed push fallback). */
+    suspend fun heartbeat(body: HeartbeatRequest): Boolean {
+        val element = execute(post(base(), "api/devices/heartbeat", json.encodeToString(HeartbeatRequest.serializer(), body)))
+        return ((element as? JsonObject)?.get("upload_logs") as? JsonPrimitive)?.content == "true"
+    }
+
+    /** Uploads a gzipped log bundle; returns the reference code support finds it by. */
+    suspend fun uploadLogs(reason: String, appVersion: String, gzipped: ByteArray): String {
+        val url = resolve(base(), "api/devices/logs").newBuilder()
+            .addQueryParameter("reason", reason)
+            .addQueryParameter("app_version", appVersion)
+            .build()
+        val request = authorized(Request.Builder().url(url).post(gzipped.toRequestBody("application/gzip".toMediaType())), true)
+        val ref = ((execute(request) as? JsonObject)?.get("ref") as? JsonPrimitive)?.takeIf { it.isString }?.content
+        return ref ?: throw ApiException(200, "Log upload answered without a reference", malformed = true)
     }
 
     suspend fun updateFcmToken(token: String) {

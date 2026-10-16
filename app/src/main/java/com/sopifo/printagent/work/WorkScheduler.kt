@@ -53,6 +53,28 @@ class WorkScheduler(context: Context) : JobReporter {
     }
 
     /**
+     * Uploads the log bundle in the background (support request, crash, failed print). One per
+     * reason at a time; failed prints at most every [PRINT_FAILED_LOG_INTERVAL_MS], so a printer
+     * that keeps failing doesn't upload on every job.
+     */
+    fun enqueueLogUpload(reason: String) = safely("enqueueLogUpload") {
+        if (reason == LOG_PRINT_FAILED) {
+            val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val now = System.currentTimeMillis()
+            if (now - prefs.getLong(KEY_LAST_FAILURE_LOGS, 0) < PRINT_FAILED_LOG_INTERVAL_MS) return@safely
+            prefs.edit().putLong(KEY_LAST_FAILURE_LOGS, now).apply()
+        }
+        val request = OneTimeWorkRequestBuilder<LogUploadWorker>()
+            .setConstraints(online)
+            .setInputData(workDataOf(LogUploadWorker.KEY_REASON to reason))
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .addTag(TAG_AGENT)
+            .build()
+        wm.enqueueUniqueWork("log-upload-$reason", ExistingWorkPolicy.KEEP, request)
+        AppLog.i(TAG, "Log upload scheduled", "reason" to reason)
+    }
+
+    /**
      * Pending-job recovery. Triggers that fire together (boot + network + screen on) collapse
      * into one request through the debounce window and the unique-work KEEP policy.
      * Frequent triggers (screen on) pass a longer [minIntervalMs]: they are skipped when any
@@ -165,5 +187,11 @@ class WorkScheduler(context: Context) : JobReporter {
         /** Screen-on fires many times a day; jobs live 120 s, so every 30 s still catches them cheaply. */
         const val SCREEN_ON_SYNC_INTERVAL_MS = 30_000L
         private val lastPendingSync = AtomicLong(0)
+        const val LOG_REQUEST = "request"
+        const val LOG_CRASH = "crash"
+        const val LOG_PRINT_FAILED = "print_failed"
+        private const val PRINT_FAILED_LOG_INTERVAL_MS = 30 * 60_000L
+        private const val PREFS = "work_scheduler"
+        private const val KEY_LAST_FAILURE_LOGS = "last_failure_logs"
     }
 }

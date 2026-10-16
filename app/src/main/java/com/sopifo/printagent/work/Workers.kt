@@ -9,6 +9,8 @@ import com.sopifo.printagent.core.AppLog
 import com.sopifo.printagent.data.api.ApiException
 import com.sopifo.printagent.data.api.PrinterStatusPayload
 import com.sopifo.printagent.data.db.PrinterRole
+import com.sopifo.printagent.jobs.BatchOutcome
+import com.sopifo.printagent.jobs.JobOutcome
 import com.sopifo.printagent.service.Notifications
 import com.sopifo.printagent.service.ServiceController
 import kotlinx.coroutines.CancellationException
@@ -42,6 +44,7 @@ class JobWorker(context: Context, params: WorkerParameters) : AgentWorker(contex
         val source = inputData.getString(KEY_SOURCE) ?: "fcm"
         val outcome = container.processor.processJobById(jobId, source)
         AppLog.i("JobWorker", "Job handled", "job" to jobId, "outcome" to outcome)
+        if (outcome == JobOutcome.FAILED) container.scheduler.enqueueLogUpload(WorkScheduler.LOG_PRINT_FAILED)
         return Result.success()
     }
 
@@ -57,6 +60,9 @@ class BatchWorker(context: Context, params: WorkerParameters) : AgentWorker(cont
         val source = inputData.getString(KEY_SOURCE) ?: "fcm"
         val outcome = container.processor.processBatch(batchId, source)
         AppLog.i("BatchWorker", "Batch handled", "batch" to batchId, "outcome" to outcome)
+        if (outcome == BatchOutcome.PRINTER_FAILED || outcome == BatchOutcome.FAILED) {
+            container.scheduler.enqueueLogUpload(WorkScheduler.LOG_PRINT_FAILED)
+        }
         return Result.success()
     }
 
@@ -93,12 +99,14 @@ class HeartbeatWorker(context: Context, params: WorkerParameters) : AgentWorker(
             val printers = container.printers
             if (container.bluetooth.isBluetoothOn() && container.bluetooth.hasConnectPermission()) printers.probeAll(respectBackoff = true) else printers.refreshPassive()
             val status = printers.status.value
-            container.device.sendHeartbeat(
+            val logsRequested = container.device.sendHeartbeat(
                 PrinterStatusPayload(
                     receipt = status.getValue(PrinterRole.RECEIPT).wire,
                     label = status.getValue(PrinterRole.LABEL).wire,
                 ),
             )
+            // Support asked for logs and the push didn't get through.
+            if (logsRequested) container.scheduler.enqueueLogUpload(WorkScheduler.LOG_REQUEST)
             container.device.config()?.let { if (!it.fcmTokenSynced) container.scheduler.enqueueFcmTokenSync(null) }
             AppLog.d("Heartbeat", "Heartbeat sent")
         } catch (e: CancellationException) {
@@ -147,6 +155,25 @@ class ReportWorker(context: Context, params: WorkerParameters) : AgentWorker(con
     }
 }
 
+/** Uploads the log bundle for support; retried with backoff while offline. */
+class LogUploadWorker(context: Context, params: WorkerParameters) : AgentWorker(context, params) {
+    override suspend fun work(): Result {
+        val reason = inputData.getString(KEY_REASON) ?: return Result.failure()
+        return try {
+            container.logUploader.upload(reason)
+            Result.success()
+        } catch (e: ApiException) {
+            AppLog.w("LogUpload", "Log upload failed", e, "reason" to reason, "http" to e.httpCode)
+            if (e.retryable && runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
+        }
+    }
+
+    companion object {
+        const val KEY_REASON = "reason"
+        const val MAX_ATTEMPTS = 8
+    }
+}
+
 class FcmTokenWorker(context: Context, params: WorkerParameters) : AgentWorker(context, params) {
     override suspend fun work(): Result = try {
         container.device.syncFcmToken(inputData.getString(KEY_TOKEN))
@@ -166,7 +193,11 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : AgentWorker(c
         val reason = inputData.getString(KEY_REASON) ?: "watchdog"
         ServiceController.start(applicationContext, reason)
         container.scheduler.ensureHeartbeat()
-        if (reason == "crash_recovery") container.scheduler.enqueuePendingSync(reason, force = true)
+        if (reason == "crash_recovery") {
+            container.scheduler.enqueuePendingSync(reason, force = true)
+            // The log ends with the crash's stack trace (CrashHandler flushes it).
+            container.scheduler.enqueueLogUpload(WorkScheduler.LOG_CRASH)
+        }
         return Result.success()
     }
 

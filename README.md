@@ -44,7 +44,8 @@ unknown fields are ignored.
 | Method & path | Body → Response |
 |---|---|
 | `POST /api/devices/register` | `{token, device_name, platform, app_version, fcm_token?}` → `{device_id, device_jwt, store_name, device_name?}` |
-| `POST /api/devices/heartbeat` | `{battery_percent, printer_status:{receipt,label}, app_version, last_seen}` every 5 min. Printer values: `connected`, `disconnected`, `bluetooth_off`, `no_permission`, `not_configured` |
+| `POST /api/devices/heartbeat` | `{battery_percent, printer_status:{receipt,label}, app_version, last_seen}` every 5 min; the response's `upload_logs: true` asks for the logs. Printer values: `connected`, `disconnected`, `bluetooth_off`, `no_permission`, `not_configured` |
+| `POST /api/devices/logs?reason=&app_version=` | gzipped log bundle (`application/gzip`) → `{ref}`. Reasons: `button` (Send logs to support), `request` (support asked: FCM `{"type":"upload_logs"}` or heartbeat `upload_logs: true`), `crash` (after crash recovery), `print_failed` (at most every 30 min) |
 | `POST /api/devices/fcm-token` | `{fcm_token}`, sent on registration and whenever Firebase rotates the token |
 | `GET /api/print-jobs/{id}` | → `{id, type, status, image_url, created_at, copies?}` |
 | `GET /api/print-jobs/pending` | → `[job…]` or `{jobs:[…], batches?:[id…]}`: jobs assigned to this device, `pending`, < 120 s old, plus live bulk batches to fetch |

@@ -84,6 +84,39 @@ class ApiClientTest {
         assertEquals(emptyList<String>(), client.getPendingJobs().batches)
     }
 
+    @Test fun uploadLogsSendsGzipWithReasonAndReturnsRef() = runTest {
+        server.enqueue(MockResponse().setBody("""{"ref":"K7Q2MX","created_at":"2026-10-16T00:00:00Z"}"""))
+        val body = byteArrayOf(0x1f, 0x8b.toByte(), 8, 0)
+        assertEquals("K7Q2MX", client.uploadLogs("crash", "1.2.0", body))
+        val req = server.takeRequest()
+        assertEquals("/api/devices/logs?reason=crash&app_version=1.2.0", req.path)
+        assertEquals("POST", req.method)
+        assertEquals("Bearer device-jwt", req.getHeader("Authorization"))
+        assertTrue(req.getHeader("Content-Type")!!.startsWith("application/gzip"))
+        assertEquals(body.toList(), req.body.readByteArray().toList())
+    }
+
+    @Test fun uploadLogsWithoutRefIsAContractError() = runTest {
+        server.enqueue(MockResponse().setBody("{}"))
+        try {
+            client.uploadLogs("button", "1.2.0", byteArrayOf(1))
+            fail("expected ApiException")
+        } catch (e: ApiException) {
+            assertTrue(e.malformed)
+        }
+    }
+
+    @Test fun heartbeatReportsWhenSupportAskedForLogs() = runTest {
+        val beat = HeartbeatRequest(50, PrinterStatusPayload("connected", "connected"), "1.2.0", "2026-10-16T00:00:00Z")
+        server.enqueue(MockResponse().setBody("""{"device_id":"d","upload_logs":true}"""))
+        assertTrue(client.heartbeat(beat))
+        server.enqueue(MockResponse().setBody("""{"device_id":"d","upload_logs":false}"""))
+        assertFalse(client.heartbeat(beat))
+        // Older backends don't send the flag.
+        server.enqueue(MockResponse().setBody("""{"device_id":"d"}"""))
+        assertFalse(client.heartbeat(beat))
+    }
+
     @Test fun registerAcceptsDataEnvelopeAndAlternateNames() = runTest {
         server.enqueue(MockResponse().setBody("""{"data":{"id":"dev_2","token":"jwt_2","store_name":"S"}}"""))
         val res = client.register(baseUrl, RegisterRequest(token = "tok", deviceName = "P", appVersion = "1"))

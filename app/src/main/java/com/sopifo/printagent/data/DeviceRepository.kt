@@ -104,8 +104,9 @@ class DeviceRepository(
         AppLog.i(TAG, "Device session cleared")
     }
 
-    suspend fun sendHeartbeat(printerStatus: PrinterStatusPayload) {
-        apiProvider().heartbeat(
+    /** Returns true when support asked for this phone's logs. */
+    suspend fun sendHeartbeat(printerStatus: PrinterStatusPayload): Boolean {
+        val logsRequested = apiProvider().heartbeat(
             HeartbeatRequest(
                 batteryPercent = systemInfo.batteryPercent(),
                 printerStatus = printerStatus,
@@ -114,6 +115,7 @@ class DeviceRepository(
             ),
         )
         markSynced()
+        return logsRequested
     }
 
     /** Pushes the FCM token to the backend when it changed or was never acknowledged. */
