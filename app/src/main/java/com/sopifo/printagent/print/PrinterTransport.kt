@@ -12,9 +12,6 @@ import androidx.core.content.ContextCompat
 import com.sopifo.printagent.core.AppLog
 import com.sopifo.printagent.data.db.PrinterConfigEntity
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -85,37 +82,30 @@ class BluetoothPrinterTransport(
         }
     }
 
-    /** BluetoothSocket.connect() ignores interrupts; the only way to bound it is closing the socket. */
+    /**
+     * BluetoothSocket.connect() ignores interrupts; closing the socket is meant to unblock it,
+     * but on some phones neither returns. HardTimeout gives up on time either way.
+     */
     @SuppressLint("MissingPermission")
-    private suspend fun connect(socket: BluetoothSocket): BluetoothSocket = coroutineScope {
-        var timedOut = false
-        val watchdog = launch {
-            delay(connectTimeoutMs)
-            timedOut = true
-            runCatching { socket.close() }
-        }
-        try {
+    private suspend fun connect(socket: BluetoothSocket): BluetoothSocket = try {
+        HardTimeout.run(connectTimeoutMs, "connect", onTimeout = { socket.close() }) {
             socket.connect()
             socket
-        } catch (e: IOException) {
-            runCatching { socket.close() }
-            if (timedOut) throw PrintException(PrintFailure.TIMEOUT, "Printer connect timed out", e)
-            throw e
-        } finally {
-            watchdog.cancel()
         }
+    } catch (e: IOException) {
+        closeInBackground(socket)
+        throw e
+    } catch (e: PrintException) {
+        AppLog.w(TAG, "Connect gave up", e)
+        throw e
     }
 
     private class BluetoothConnection(private val socket: BluetoothSocket, private val speedKbps: Int) : PrinterConnection {
-        override suspend fun write(data: ByteArray) = withContext(Dispatchers.IO) {
-            coroutineScope {
-                var timedOut = false
-                val watchdog = launch {
-                    delay(SendSpeed.writeTimeoutMs(data.size, speedKbps))
-                    timedOut = true
-                    runCatching { socket.close() }
-                }
-                try {
+        override suspend fun write(data: ByteArray) {
+            // The whole send runs on one thread, paced with sleeps, under one hard time limit: a
+            // write that never returns fails the print and frees the printer instead of holding it.
+            try {
+                HardTimeout.run(SendSpeed.writeTimeoutMs(data.size, speedKbps), "write", onTimeout = { socket.close() }) {
                     val out = socket.outputStream
                     var offset = 0
                     val chunk = SendSpeed.chunkSize(speedKbps)
@@ -127,27 +117,27 @@ class BluetoothPrinterTransport(
                         offset += n
                         // Pace writes at the printer's send speed: cheap printers drop bytes if their
                         // small buffer overflows.
-                        delay(pause)
+                        Thread.sleep(pause)
                     }
                     // Give the printer time to drain before the link closes (closing early truncates output).
-                    delay(drainDelayMs(data.size))
-                } catch (e: IOException) {
-                    if (timedOut) throw PrintException(PrintFailure.TIMEOUT, "Printer write timed out", e)
-                    throw PrintException(PrintFailure.WRITE_FAILED, "Write failed: ${e.message}", e)
-                } finally {
-                    watchdog.cancel()
+                    Thread.sleep(drainDelayMs(data.size))
                 }
+            } catch (e: IOException) {
+                throw PrintException(PrintFailure.WRITE_FAILED, "Write failed: ${e.message}", e)
             }
         }
 
-        override fun close() {
-            runCatching { socket.outputStream.close() }
-            runCatching { socket.close() }
-        }
+        // close() can block on the same phones: never on the caller's thread.
+        override fun close() = closeInBackground(socket)
     }
 
     companion object {
         private const val TAG = "BtTransport"
+
+        fun closeInBackground(socket: BluetoothSocket) = HardTimeout.daemon("bt-close") {
+            runCatching { socket.outputStream.close() }
+            runCatching { socket.close() }
+        }
         val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
         fun drainDelayMs(bytes: Int): Long = (300L + bytes / 20).coerceAtMost(4_000L)
     }

@@ -50,6 +50,23 @@ class PrinterManager(
     private val locks = ConcurrentHashMap<String, Mutex>()
     private fun lockFor(printer: PrinterConfigEntity): Mutex =
         locks.computeIfAbsent(printer.macAddress.uppercase()) { Mutex() }
+
+    /** When each printer's last connection closed (clock ms), for [settle]. */
+    private val lastClosed = ConcurrentHashMap<String, Long>()
+
+    /**
+     * Waits until [RECONNECT_GAP_MS] after the printer's last connection closed. Small printers
+     * can still be printing or feeding the last job; reconnecting a few seconds after a print
+     * left the phone stuck connecting.
+     */
+    private suspend fun settle(printer: PrinterConfigEntity) {
+        val wait = (lastClosed[printer.macAddress.uppercase()] ?: return) + RECONNECT_GAP_MS - clock()
+        if (wait > 0) delay(wait)
+    }
+
+    private fun closed(printer: PrinterConfigEntity) {
+        lastClosed[printer.macAddress.uppercase()] = clock()
+    }
     private val _status = MutableStateFlow(PrinterRole.entries.associateWith { PrinterState.NOT_CONFIGURED })
     val status: StateFlow<Map<PrinterRole, PrinterState>> = _status.asStateFlow()
 
@@ -85,6 +102,7 @@ class PrinterManager(
         shouldContinue: () -> Boolean = { true },
         block: suspend (PrinterConnection) -> T,
     ): T = lockFor(printer).withLock {
+        settle(printer)
         val connection = open(printer, attempts, shouldContinue)
         try {
             setStatus(printer, PrinterState.CONNECTED)
@@ -94,6 +112,7 @@ class PrinterManager(
             throw e
         } finally {
             connection.close()
+            closed(printer)
         }
     }
 
@@ -135,7 +154,9 @@ class PrinterManager(
         if (!lock.tryLock()) return _status.value.getValue(role)
         return try {
             val state = try {
+                settle(printer)
                 transport.open(printer).close()
+                closed(printer)
                 PrinterState.CONNECTED
             } catch (e: PrintException) {
                 stateFor(e)
@@ -267,5 +288,6 @@ class PrinterManager(
         const val PROBE_BACKOFF_FIRST_MS = 10 * 60_000L
         const val PROBE_BACKOFF_MAX_MS = 15 * 60_000L
         const val PROBE_SLACK_MS = 60_000L
+        const val RECONNECT_GAP_MS = 2_000L
     }
 }
