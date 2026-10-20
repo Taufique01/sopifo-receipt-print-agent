@@ -17,7 +17,18 @@ class MonoBitmap(val width: Int, val height: Int, val data: ByteArray) {
         return (b shr (7 - x % 8)) and 1 == 1
     }
 
+    /** This bitmap [top] rows down in a white bitmap [totalHeight] rows tall (sticker padding). */
+    fun padded(top: Int, totalHeight: Int): MonoBitmap {
+        require(top >= 0 && top + height <= totalHeight) { "Content does not fit the padded height" }
+        val out = ByteArray(bytesPerRow * totalHeight)
+        data.copyInto(out, destinationOffset = top * bytesPerRow)
+        return MonoBitmap(width, totalHeight, out)
+    }
+
     companion object {
+        /** White rows: printing them moves the paper exactly [height] dots. */
+        fun blank(width: Int, height: Int): MonoBitmap = MonoBitmap(width, height, ByteArray(((width + 7) / 8) * height))
+
         /**
          * Converts ARGB pixels to 1-bit. Transparent pixels count as white paper; the rest are
          * thresholded on luminance. Backend PNGs are already print-ready black/white artwork.

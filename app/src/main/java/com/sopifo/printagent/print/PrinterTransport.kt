@@ -72,7 +72,7 @@ class BluetoothPrinterTransport(
                     AppLog.w(TAG, "Secure RFCOMM failed, trying insecure", secure, "printer" to printer.name)
                     connect(device.createInsecureRfcommSocketToServiceRecord(SPP_UUID))
                 }
-                BluetoothConnection(socket)
+                BluetoothConnection(socket, printer.sendSpeedKbps)
             } catch (e: PrintException) {
                 throw e
             } catch (e: SecurityException) {
@@ -106,25 +106,28 @@ class BluetoothPrinterTransport(
         }
     }
 
-    private class BluetoothConnection(private val socket: BluetoothSocket) : PrinterConnection {
+    private class BluetoothConnection(private val socket: BluetoothSocket, private val speedKbps: Int) : PrinterConnection {
         override suspend fun write(data: ByteArray) = withContext(Dispatchers.IO) {
             coroutineScope {
                 var timedOut = false
                 val watchdog = launch {
-                    delay(writeTimeoutMs(data.size))
+                    delay(SendSpeed.writeTimeoutMs(data.size, speedKbps))
                     timedOut = true
                     runCatching { socket.close() }
                 }
                 try {
                     val out = socket.outputStream
                     var offset = 0
+                    val chunk = SendSpeed.chunkSize(speedKbps)
+                    val pause = SendSpeed.chunkDelayMs(speedKbps)
                     while (offset < data.size) {
-                        val n = minOf(CHUNK_SIZE, data.size - offset)
+                        val n = minOf(chunk, data.size - offset)
                         out.write(data, offset, n)
                         out.flush()
                         offset += n
-                        // Pace writes: cheap printers drop bytes if their small buffer overflows.
-                        delay(CHUNK_DELAY_MS)
+                        // Pace writes at the printer's send speed: cheap printers drop bytes if their
+                        // small buffer overflows.
+                        delay(pause)
                     }
                     // Give the printer time to drain before the link closes (closing early truncates output).
                     delay(drainDelayMs(data.size))
@@ -146,10 +149,6 @@ class BluetoothPrinterTransport(
     companion object {
         private const val TAG = "BtTransport"
         val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
-        private const val CHUNK_SIZE = 512
-        private const val CHUNK_DELAY_MS = 8L
-
-        fun writeTimeoutMs(bytes: Int): Long = 15_000L + bytes / 4
         fun drainDelayMs(bytes: Int): Long = (300L + bytes / 20).coerceAtMost(4_000L)
     }
 }

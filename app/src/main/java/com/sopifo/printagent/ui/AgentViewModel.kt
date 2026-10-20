@@ -15,6 +15,8 @@ import com.sopifo.printagent.data.db.PrinterProtocol
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.print.PrintDataBuilder
 import com.sopifo.printagent.print.PrintException
+import com.sopifo.printagent.print.SendSpeed
+import com.sopifo.printagent.print.StickerLayout
 import com.sopifo.printagent.service.ServiceController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -138,6 +140,36 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Sticker setup: prints [count] numbered test stickers. */
+    fun printStickerTest(role: PrinterRole, count: Int) = stickerAction("Printing $count test sticker${if (count > 1) "s" else ""}…") {
+        c.printers.stickerTest(role, count)
+    }
+
+    /** Sticker setup: one sticker + gap forward, keeping the roll lined up. */
+    fun feedNextSticker(config: PrinterConfigEntity) = stickerAction("Feeding one sticker…") {
+        c.printers.stickerFeed(config.role, config.stickerLayout()?.pitchDots ?: return@stickerAction)
+    }
+
+    /** Sticker setup: 1 mm forward, to bring a gap to the tear edge. */
+    fun nudgeSticker(role: PrinterRole) = stickerAction("Moving 1 mm…") {
+        c.printers.stickerFeed(role, StickerLayout.mmToDots(1.0))
+    }
+
+    private fun stickerAction(busy: String, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            _message.value = busy
+            _message.value = try {
+                block()
+                null
+            } catch (e: PrintException) {
+                "Printer: ${e.message}"
+            } catch (e: Exception) {
+                AppLog.e(TAG, "Sticker action error", e)
+                "Printer: ${e.message}"
+            }
+        }
+    }
+
     /**
      * Loads the backend's pending jobs. With [printFirst] (the Refresh button) it first runs the
      * same pending-job recovery as the background triggers, so a listed job gets printed instead
@@ -209,6 +241,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
                     widthDots = PrintDataBuilder.MAX_ESC_POS_WIDTH,
                     // Changing to another printer keeps the chosen paper width.
                     paperWidthMm = c.db.printerConfigDao().get(role)?.paperWidthMm,
+                    sendSpeedKbps = SendSpeed.defaultFor(protocol),
                 ),
             )
             AppLog.i(TAG, "Printer saved", "role" to role, "name" to device.name)
