@@ -1,6 +1,8 @@
 package com.sopifo.printagent.print
 
+import com.sopifo.printagent.data.db.PrinterConfigEntity
 import com.sopifo.printagent.data.db.PrinterProtocol
+import com.sopifo.printagent.data.db.PrinterRole
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,9 +16,12 @@ class SendSpeedTest {
     }
 
     @Test
-    fun labelPrintersDefaultToSafeReceiptsToFast() {
-        assertEquals(SendSpeed.SAFE_KBPS, SendSpeed.defaultFor(PrinterProtocol.TSPL))
-        assertEquals(SendSpeed.FAST_KBPS, SendSpeed.defaultFor(PrinterProtocol.ESC_POS))
+    fun everyPrinterDefaultsToTheFastestSpeed() {
+        assertEquals(SendSpeed.STEPS.last(), SendSpeed.FAST_KBPS)
+        for (protocol in PrinterProtocol.entries) {
+            val printer = PrinterConfigEntity(role = PrinterRole.LABEL, name = "p", macAddress = "00:11:22:33:44:55", protocol = protocol, widthDots = 384)
+            assertEquals(SendSpeed.FAST_KBPS, printer.sendSpeedKbps)
+        }
     }
 
     @Test

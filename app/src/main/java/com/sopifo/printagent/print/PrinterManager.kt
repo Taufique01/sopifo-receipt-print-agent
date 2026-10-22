@@ -240,18 +240,6 @@ class PrinterManager(
         print(printer, withContext(Dispatchers.Default) { builder.testPage(printer) })
     }
 
-    /** Sticker setup: numbered test stickers (see PrintDataBuilder.stickerTest). */
-    suspend fun stickerTest(role: PrinterRole, count: Int) {
-        val printer = printerDao.get(role) ?: throw PrintException(PrintFailure.NOT_CONFIGURED, "No ${role.name.lowercase()} printer configured")
-        print(printer, withContext(Dispatchers.Default) { builder.stickerTest(printer, count) })
-    }
-
-    /** Sticker setup: moves the paper forward exactly [dots] (one sticker, or a 1 mm nudge). */
-    suspend fun stickerFeed(role: PrinterRole, dots: Int) {
-        val printer = printerDao.get(role) ?: throw PrintException(PrintFailure.NOT_CONFIGURED, "No ${role.name.lowercase()} printer configured")
-        print(printer, builder.stickerFeed(printer, dots))
-    }
-
     /** Image decoding/thresholding is CPU-bound; keep it off the main thread whoever calls. */
     suspend fun buildFromPng(png: ByteArray, printer: PrinterConfigEntity, copies: Int): PrintData =
         withContext(Dispatchers.Default) { builder.fromPng(png, printer, copies) }

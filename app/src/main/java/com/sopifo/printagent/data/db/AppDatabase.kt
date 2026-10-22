@@ -2,9 +2,11 @@ package com.sopifo.printagent.data.db
 
 import android.content.Context
 import androidx.room.AutoMigration
+import androidx.room.DeleteColumn
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.AutoMigrationSpec
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
@@ -15,13 +17,29 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PrintedJobEntity::class,
         RecentJobEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), // printer_config.paper_width_mm
+        AutoMigration(from = 4, to = 5, spec = AppDatabase.RemoveStickers::class),
     ],
 )
 abstract class AppDatabase : RoomDatabase() {
+    /**
+     * Sticker mode (1.2.2–1.2.3) is retired: its settings go, and every printer is back to the
+     * fastest send speed.
+     */
+    @DeleteColumn(tableName = "printer_config", columnName = "paper_type")
+    @DeleteColumn(tableName = "printer_config", columnName = "sticker_height_mm")
+    @DeleteColumn(tableName = "printer_config", columnName = "sticker_gap_mm")
+    @DeleteColumn(tableName = "printer_config", columnName = "sticker_offset_tenths")
+    @DeleteColumn(tableName = "printer_config", columnName = "sticker_pitch_adjust")
+    class RemoveStickers : AutoMigrationSpec {
+        override fun onPostMigrate(db: SupportSQLiteDatabase) {
+            db.execSQL("UPDATE printer_config SET send_speed_kbps = 64")
+        }
+    }
+
     abstract fun deviceConfigDao(): DeviceConfigDao
     abstract fun printerConfigDao(): PrinterConfigDao
     abstract fun printedJobDao(): PrintedJobDao

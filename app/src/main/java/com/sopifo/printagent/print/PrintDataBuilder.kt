@@ -72,9 +72,7 @@ class PrintDataBuilder {
     }
 
     private fun fromBitmap(source: Bitmap, printer: PrinterConfigEntity, copies: Int, sourceWidth: Int): PrintData {
-        val sticker = printer.stickerLayout()
-        // Stickers: content no taller than fits on one sticker.
-        val (maxW, maxH) = printableArea(printer).let { (w, h) -> w to (sticker?.maxContentDots ?: h) }
+        val (maxW, maxH) = printableArea(printer)
         val paperW = paperWidthDots(printer)
         var bmp = source
         try {
@@ -86,16 +84,12 @@ class PrintDataBuilder {
                 bmp = scaled
             }
             // Downscaling greys out 1-dot strokes; a lighter cut-off keeps thin text and rules.
-            val content = toMono(bmp, if (shrunk) SCALED_THRESHOLD else DEFAULT_THRESHOLD)
-            // Stickers: exactly one sticker + gap per print, so the next gap ends at the tear edge.
-            val mono = sticker?.let { content.padded(it.topDots, it.topDots + content.height + it.tailDots(content.height)) } ?: content
+            val mono = toMono(bmp, if (shrunk) SCALED_THRESHOLD else DEFAULT_THRESHOLD)
             val note = if (paperW != null && sourceWidth > paperW) {
                 "Shrunk to fit ${printer.paperWidthMm} mm paper; set receipt width to ${printer.paperWidthMm} mm in the dashboard"
             } else null
             val bytes = when (printer.protocol) {
-                PrinterProtocol.ESC_POS ->
-                    if (sticker != null) EscPosEncoder.encode(mono, copies = copies, feedLines = 0, cut = false)
-                    else EscPosEncoder.encode(mono, copies = copies, cut = printer.cutPaper)
+                PrinterProtocol.ESC_POS -> EscPosEncoder.encode(mono, copies = copies, cut = printer.cutPaper)
                 PrinterProtocol.TSPL -> TsplEncoder.encode(
                     mono,
                     widthMm = ceilDiv(mono.width, TsplEncoder.DOTS_PER_MM),
@@ -111,45 +105,6 @@ class PrintDataBuilder {
             bmp.recycle()
         }
     }
-
-    /**
-     * Sticker setup: [count] numbered test stickers, each a box the size of the content area. A
-     * box fully on one sticker means the setup is right; boxes creeping up or down over a run
-     * mean the per-sticker feed needs adjusting.
-     */
-    fun stickerTest(printer: PrinterConfigEntity, count: Int): ByteArray {
-        val sticker = requireNotNull(printer.stickerLayout()) { "Not a sticker printer" }
-        val width = stickerWidthDots(printer)
-        val height = sticker.maxContentDots
-        val out = java.io.ByteArrayOutputStream()
-        for (n in 1..count.coerceIn(1, 10)) {
-            val bmp = createBitmap(width, height)
-            try {
-                val canvas = Canvas(bmp)
-                canvas.drawColor(Color.WHITE)
-                val stroke = Paint().apply { color = Color.BLACK; style = Paint.Style.STROKE; strokeWidth = 6f }
-                canvas.drawRect(3f, 3f, width - 3f, height - 3f, stroke)
-                val big = Paint().apply { color = Color.BLACK; isAntiAlias = false; typeface = Typeface.DEFAULT_BOLD; textSize = width / 9f; textAlign = Paint.Align.CENTER }
-                val small = Paint(big).apply { typeface = Typeface.DEFAULT; textSize = width / 16f }
-                val cx = width / 2f
-                canvas.drawText("TEST $n of $count", cx, height * 0.35f, big)
-                canvas.drawText("${sticker.heightMm} mm sticker · ${sticker.gapMm} mm gap", cx, height * 0.5f, small)
-                canvas.drawText("The box should sit fully", cx, height * 0.64f, small)
-                canvas.drawText("on one sticker", cx, height * 0.72f, small)
-                val mono = toMono(bmp, DEFAULT_THRESHOLD)
-                out.write(EscPosEncoder.encode(mono.padded(sticker.topDots, sticker.pitchDots), feedLines = 0, cut = false))
-            } finally {
-                bmp.recycle()
-            }
-        }
-        return out.toByteArray()
-    }
-
-    /** Moves sticker paper forward exactly [dots] (blank rows: exact on every printer). */
-    fun stickerFeed(printer: PrinterConfigEntity, dots: Int): ByteArray =
-        EscPosEncoder.encode(MonoBitmap.blank(stickerWidthDots(printer), dots.coerceIn(1, 4000)), feedLines = 0, cut = false)
-
-    private fun stickerWidthDots(printer: PrinterConfigEntity): Int = paperWidthDots(printer) ?: PAPER_58_MM_DOTS
 
     /** Row-by-row conversion so a long receipt never needs a full ARGB int array in memory. */
     private fun toMono(bmp: Bitmap, threshold: Int): MonoBitmap {
