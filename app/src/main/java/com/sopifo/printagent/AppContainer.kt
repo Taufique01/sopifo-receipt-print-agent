@@ -18,6 +18,12 @@ import com.sopifo.printagent.print.FilePrinterTransport
 import com.sopifo.printagent.print.PrintDataBuilder
 import com.sopifo.printagent.print.PrinterManager
 import com.sopifo.printagent.print.RoutingPrinterTransport
+import com.sopifo.printagent.runs.ApiRunContent
+import com.sopifo.printagent.runs.PrintRunner
+import com.sopifo.printagent.runs.PrinterManagerPort
+import com.sopifo.printagent.runs.RunReporter
+import com.sopifo.printagent.security.AppLock
+import com.sopifo.printagent.service.RunNotifications
 import com.sopifo.printagent.service.ServiceController
 import com.sopifo.printagent.work.WorkScheduler
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -91,6 +97,35 @@ class AppContainer(private val context: Context) {
 
     val jobs: JobRepository by lazy { JobRepository(db.printedJobDao(), db.recentJobDao()) }
 
+    /** Optional PIN / fingerprint lock for the pages with customer names. */
+    val appLock = AppLock(context)
+
+    val runNotifications: RunNotifications by lazy { RunNotifications(context).also { it.createChannels() } }
+
+    /** Results of the app's own prints → server (history, printed marks). */
+    val runReporter: RunReporter by lazy { RunReporter(db.printRunDao()) { api.reportPrintResults(it) } }
+
+    /** Prints the seller starts in the app (Orders, Shipping, Quick print): straight to the printer. */
+    val runner: PrintRunner by lazy {
+        PrintRunner(
+            dao = db.printRunDao(),
+            printers = PrinterManagerPort(printers),
+            content = ApiRunContent(api, printers),
+            scope = scope,
+            notifier = runNotifications,
+            onResults = ::reportRunsSoon,
+            // The foreground service keeps the app alive while the phone is locked.
+            keepAlive = { ServiceController.start(context, "print_run") },
+        )
+    }
+
+    /** Sends unsent print results now; if offline, a worker keeps trying. */
+    fun reportRunsSoon() {
+        scope.launch(Dispatchers.IO) {
+            if (device.hasSession() && !runReporter.reportPending()) scheduler.enqueueRunReports()
+        }
+    }
+
     val processor: JobProcessor by lazy {
         JobProcessor(
             api, jobs, printers, scheduler, serverClock,
@@ -113,6 +148,8 @@ class AppContainer(private val context: Context) {
                 if (device.config()?.fcmTokenSynced != true) scheduler.enqueueFcmTokenSync(null)
                 ServiceController.start(context, reason)
                 printers.refreshPassive()
+                runner.recoverInterrupted()
+                runner.prune()
             } catch (e: Exception) {
                 AppLog.e("AppContainer", "startAgent failed", e, "reason" to reason)
             }
@@ -146,6 +183,7 @@ class AppContainer(private val context: Context) {
     }
 
     suspend fun unregister() {
+        appLock.clear()
         scheduler.cancelAll()
         ServiceController.stop(context)
         device.unregister()

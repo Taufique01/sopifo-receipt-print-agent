@@ -107,14 +107,18 @@ class AppUiTest {
             compose.onNodeWithTag("test_receipt").assertIsDisplayed()
             compose.onNodeWithTag("test_label").assertIsDisplayed()
 
-            compose.onNodeWithTag("tab_pending").performClick()
+            // Dashboard jobs waiting to print live under More → Activity → Waiting.
+            compose.onNodeWithTag("tab_more").performClick()
+            compose.onNodeWithTag("more_activity").performClick()
+            compose.onNodeWithText("Waiting").performClick()
             waitOrDump { compose.onAllNodes(hasTestTag("cancel_job_ui_1")).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("job_ui_1").assertIsDisplayed()
             compose.onNodeWithTag("cancel_job_ui_1").performClick()
             compose.onNodeWithText("Cancel job").performClick()
             waitOrDump { requests.contains("POST /api/print-jobs/job_ui_1/cancel") }
 
-            compose.onNodeWithTag("tab_diagnostics").performClick()
+            compose.onNodeWithTag("more_back").performClick()
+            compose.onNodeWithTag("more_diagnostics").performClick()
             compose.onNodeWithTag("diag_version").assertIsDisplayed()
             compose.onNodeWithTag("diag_fcm").assertIsDisplayed()
             compose.onNodeWithTag("diag_service").assertIsDisplayed()

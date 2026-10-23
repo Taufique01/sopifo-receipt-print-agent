@@ -99,3 +99,60 @@ interface RecentJobDao {
         const val MAX_RECENT_JOBS = 20
     }
 }
+
+/** Prints the seller started in the app, and each item's outcome (see PrintRunner). */
+@Dao
+interface PrintRunDao {
+    @Insert
+    suspend fun insertRun(run: PrintRunEntity)
+
+    @Insert
+    suspend fun insertItems(items: List<PrintRunItemEntity>)
+
+    @Query("SELECT * FROM print_runs WHERE id = :id")
+    suspend fun getRun(id: String): PrintRunEntity?
+
+    @Query("SELECT * FROM print_runs WHERE id = :id")
+    fun observeRun(id: String): Flow<PrintRunEntity?>
+
+    @Query("SELECT * FROM print_runs ORDER BY created_at DESC LIMIT 50")
+    fun observeRuns(): Flow<List<PrintRunEntity>>
+
+    @Query("SELECT * FROM print_runs WHERE state = :state")
+    suspend fun runsIn(state: RunState): List<PrintRunEntity>
+
+    @Query("SELECT * FROM print_run_items WHERE run_id = :runId ORDER BY idx")
+    suspend fun items(runId: String): List<PrintRunItemEntity>
+
+    @Query("SELECT * FROM print_run_items WHERE run_id = :runId ORDER BY idx")
+    fun observeItems(runId: String): Flow<List<PrintRunItemEntity>>
+
+    @Query("UPDATE print_run_items SET status = :status, reason = :reason, updated_at = :at WHERE run_id = :runId AND idx = :idx")
+    suspend fun setItem(runId: String, idx: Int, status: RunItemStatus, reason: String?, at: Long)
+
+    /** Retry: the run's unsuccessful items go back in the queue as a new attempt. */
+    @Query(
+        "UPDATE print_run_items SET status = 'PENDING', reason = NULL, attempt = attempt + 1, reported = 0, updated_at = :at " +
+            "WHERE run_id = :runId AND status IN ('FAILED', 'INCOMPLETE', 'NOT_PRINTED')",
+    )
+    suspend fun requeueUnsuccessful(runId: String, at: Long): Int
+
+    @Query("UPDATE print_runs SET state = :state, printed = :printed, failed = :failed, message = :message, updated_at = :at WHERE id = :id")
+    suspend fun setRun(id: String, state: RunState, printed: Int, failed: Int, message: String?, at: Long)
+
+    /** Finished order / parcel items whose result hasn't reached the server yet. */
+    @Query(
+        "SELECT * FROM print_run_items WHERE reported = 0 AND kind IN ('order', 'parcel') " +
+            "AND status IN ('PRINTED', 'FAILED', 'INCOMPLETE', 'NOT_PRINTED') ORDER BY updated_at LIMIT 200",
+    )
+    suspend fun unreported(): List<PrintRunItemEntity>
+
+    @Query("UPDATE print_run_items SET reported = 1 WHERE run_id = :runId AND idx IN (:idx)")
+    suspend fun markReported(runId: String, idx: List<Int>)
+
+    @Query("DELETE FROM print_runs WHERE created_at < :before AND state != 'RUNNING'")
+    suspend fun deleteRunsBefore(before: Long)
+
+    @Query("DELETE FROM print_run_items WHERE run_id NOT IN (SELECT id FROM print_runs)")
+    suspend fun deleteOrphanItems()
+}

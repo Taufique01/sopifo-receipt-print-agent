@@ -4,4 +4,8 @@
     <string name="notif_channel_service_desc">Keeps the print agent ready to receive jobs</string>
     <string name="notif_channel_jobs">Print jobs</string>
     <string name="notif_channel_jobs_desc">Shown briefly while a job is printing</string>
+    <string name="notif_channel_run_progress">Printing progress</string>
+    <string name="notif_channel_run_progress_desc">Shown while orders, labels or quick prints you started are printing</string>
+    <string name="notif_channel_run_results">Print results</string>
+    <string name="notif_channel_run_results_desc">Tells you when your prints are done, or what went wrong</string>
 </resources>

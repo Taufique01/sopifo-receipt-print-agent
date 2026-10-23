@@ -193,6 +193,80 @@ class ApiClient(
         }
     }
 
+    // ---- The app's own pages: Orders and Shipping (see PrintPagesModels.kt). ----
+
+    /** One page of open orders, newest first; [status] narrows to one open status. */
+    suspend fun listOrders(status: String?, page: Int, pageSize: Int): OrdersPageDto {
+        val url = resolve(base(), "api/device/orders").newBuilder()
+            .addQueryParameter("page", page.toString())
+            .addQueryParameter("page_size", pageSize.toString())
+            .apply { if (!status.isNullOrBlank()) addQueryParameter("status", status) }
+            .build()
+        return decode(OrdersPageDto.serializer(), execute(authorized(Request.Builder().url(url).get(), true)))
+    }
+
+    /** One page of a courier's parcels ("pathao" / "steadfast"; filter "awaiting" / "all"). */
+    suspend fun listParcels(courier: String, filter: String, page: Int, pageSize: Int): ParcelsPageDto {
+        val url = resolve(base(), "api/device/parcels").newBuilder()
+            .addQueryParameter("courier", courier)
+            .addQueryParameter("filter", filter)
+            .addQueryParameter("page", page.toString())
+            .addQueryParameter("page_size", pageSize.toString())
+            .build()
+        return decode(ParcelsPageDto.serializer(), execute(authorized(Request.Builder().url(url).get(), true)))
+    }
+
+    suspend fun syncParcels(courier: String): SyncParcelsResponse =
+        decode(
+            SyncParcelsResponse.serializer(),
+            execute(post(base(), "api/device/parcels/sync", json.encodeToString(SyncParcelsRequest.serializer(), SyncParcelsRequest(courier)))),
+        )
+
+    /** An order's invoice or label, drawn now (no job, no push): print it straight away. */
+    suspend fun renderOrder(orderId: String, doc: String): RenderedImage {
+        val url = resolve(base(), "api/device/orders").newBuilder()
+            .addPathSegment(orderId).addPathSegment("render")
+            .addQueryParameter("doc", doc)
+            .build()
+        return fetchImage(url)
+    }
+
+    /** A courier parcel's label, drawn now. */
+    suspend fun renderParcel(parcelId: String): RenderedImage {
+        val url = resolve(base(), "api/device/parcels").newBuilder()
+            .addPathSegment(parcelId).addPathSegment("render")
+            .build()
+        return fetchImage(url)
+    }
+
+    /** What the app printed from its own pages: history rows and printed marks on the server. */
+    suspend fun reportPrintResults(body: PrintResultsRequest) {
+        execute(post(base(), "api/device/print-results", json.encodeToString(PrintResultsRequest.serializer(), body)))
+    }
+
+    private suspend fun fetchImage(url: HttpUrl): RenderedImage = withContext(Dispatchers.IO) {
+        val request = authorized(Request.Builder().url(url).get(), true)
+        val response = await(request)
+        response.use { resp ->
+            listener.onReachability(true)
+            if (resp.code == 401 || resp.code == 403) listener.onUnauthorized()
+            if (!resp.isSuccessful) throw ApiException(resp.code, serverError(resp.body?.string()) ?: "HTTP ${resp.code}")
+            val bytes = resp.body?.bytes() ?: throw ApiException(resp.code, "Empty image")
+            if (bytes.size > com.sopifo.printagent.print.PrintDataBuilder.MAX_DOWNLOAD_BYTES) {
+                throw ApiException(resp.code, "Image too large: ${bytes.size} bytes")
+            }
+            RenderedImage(bytes, resp.header("X-Print-Printer") ?: "label")
+        }
+    }
+
+    /** The backend's `{ "error": "…" }` message, for errors the seller can act on. */
+    private fun serverError(text: String?): String? = try {
+        ((text?.let { json.parseToJsonElement(it) } as? JsonObject)?.get("error") as? JsonPrimitive)
+            ?.takeIf { it.isString }?.content?.take(200)
+    } catch (_: Exception) {
+        null
+    }
+
     private fun base(): HttpUrl {
         val raw = baseUrlProvider() ?: throw ApiException(null, "Device not registered")
         return urlPolicy.parseAllowed(raw) ?: throw ApiException(null, "Server URL not allowed")
@@ -226,7 +300,9 @@ class ApiClient(
             serverClock.onServerDate(resp.header("Date"))
             val text = resp.body?.string().orEmpty()
             if (resp.code == 401 || resp.code == 403) listener.onUnauthorized()
-            if (!resp.isSuccessful) throw ApiException(resp.code, "HTTP ${resp.code} for ${request.url.encodedPath}")
+            if (!resp.isSuccessful) {
+                throw ApiException(resp.code, serverError(text) ?: "HTTP ${resp.code} for ${request.url.encodedPath}")
+            }
             if (text.isBlank()) return@withContext JsonObject(emptyMap())
             try {
                 json.parseToJsonElement(text)

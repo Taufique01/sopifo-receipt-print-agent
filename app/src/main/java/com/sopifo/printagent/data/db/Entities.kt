@@ -2,6 +2,7 @@ package com.sopifo.printagent.data.db
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /** Single row (id = 1) describing this registered device. The JWT is NOT stored here. */
@@ -87,3 +88,69 @@ object RecentJobStatus {
     const val SKIPPED_NOT_PENDING = "not_pending"
     const val INTERRUPTED = "interrupted"
 }
+
+/** A print the seller started in the app (Orders, Shipping, Quick print): one or many items. */
+enum class RunState {
+    RUNNING,
+    DONE,
+    /** Stopped by the seller, or because the printer could not be reached. */
+    STOPPED,
+    /** The app was closed mid-run; the seller can continue it. */
+    INTERRUPTED,
+}
+
+enum class RunItemStatus {
+    PENDING,
+    /** Being sent right now; found like this after a crash it becomes INCOMPLETE. */
+    SENDING,
+    PRINTED,
+    /** Its image could not be loaded or prepared: nothing was sent. */
+    FAILED,
+    /** The link dropped while sending: part of it may have printed. */
+    INCOMPLETE,
+    /** Never sent (printer unreachable, or the run was stopped). */
+    NOT_PRINTED,
+}
+
+@Entity(tableName = "print_runs")
+data class PrintRunEntity(
+    @PrimaryKey val id: String,
+    /** What the seller sees, e.g. "Order labels" or "Steadfast labels". */
+    val title: String,
+    /** orders · shipping · quick */
+    val source: String,
+    @ColumnInfo(name = "printer_role") val printerRole: PrinterRole,
+    val state: RunState,
+    val total: Int,
+    val printed: Int = 0,
+    val failed: Int = 0,
+    /** Why the run stopped, when it did. */
+    val message: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "print_run_items",
+    primaryKeys = ["run_id", "idx"],
+    indices = [Index("run_id"), Index("reported")],
+)
+data class PrintRunItemEntity(
+    @ColumnInfo(name = "run_id") val runId: String,
+    /** Position in the run: items print in this order. */
+    val idx: Int,
+    /** order · parcel · quick */
+    val kind: String,
+    /** The order / parcel id, or the image file for a quick print. */
+    @ColumnInfo(name = "ref_id") val refId: String,
+    /** invoice · label · quick */
+    val doc: String,
+    /** What the seller recognises it by, e.g. the order number. */
+    val title: String,
+    val status: RunItemStatus,
+    val reason: String? = null,
+    val attempt: Int = 1,
+    /** The result reached the server (orders and parcels only). */
+    val reported: Boolean = false,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)

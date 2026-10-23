@@ -155,6 +155,16 @@ class WorkScheduler(context: Context) : JobReporter {
         wm.enqueueUniqueWork("report-$jobId", ExistingWorkPolicy.REPLACE, request)
     }
 
+    /** Results of the app's own prints that couldn't be sent yet: try again once online. */
+    fun enqueueRunReports() = safely("enqueueRunReports") {
+        val request = OneTimeWorkRequestBuilder<RunReportWorker>()
+            .setConstraints(online)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .addTag(TAG_AGENT)
+            .build()
+        wm.enqueueUniqueWork(UNIQUE_RUN_REPORTS, ExistingWorkPolicy.KEEP, request)
+    }
+
     fun scheduleCrashRecovery() = safely("scheduleCrashRecovery") {
         val request = OneTimeWorkRequestBuilder<WatchdogWorker>()
             .setInitialDelay(10, TimeUnit.SECONDS)
@@ -182,6 +192,7 @@ class WorkScheduler(context: Context) : JobReporter {
         const val UNIQUE_WATCHDOG = "watchdog"
         const val UNIQUE_FCM_TOKEN = "fcm-token"
         const val UNIQUE_RECOVERY = "crash-recovery"
+        const val UNIQUE_RUN_REPORTS = "run-reports"
         const val HEARTBEAT_INTERVAL_MIN = 5L
         const val PENDING_SYNC_DEBOUNCE_MS = 5_000L
         /** Screen-on fires many times a day; jobs live 120 s, so every 30 s still catches them cheaply. */

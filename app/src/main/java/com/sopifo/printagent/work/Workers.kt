@@ -205,3 +205,9 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : AgentWorker(c
         const val KEY_REASON = "reason"
     }
 }
+
+/** Sends the results of prints the seller made in the app; retried with backoff until the server has them. */
+class RunReportWorker(context: Context, params: WorkerParameters) : AgentWorker(context, params) {
+    override suspend fun work(): Result =
+        if (container.runReporter.reportPending()) Result.success() else Result.retry()
+}

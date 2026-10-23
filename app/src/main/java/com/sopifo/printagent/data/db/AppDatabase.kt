@@ -16,12 +16,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PrinterConfigEntity::class,
         PrintedJobEntity::class,
         RecentJobEntity::class,
+        PrintRunEntity::class,
+        PrintRunItemEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), // printer_config.paper_width_mm
         AutoMigration(from = 4, to = 5, spec = AppDatabase.RemoveStickers::class),
+        AutoMigration(from = 5, to = 6), // print_runs + print_run_items (the app's own prints)
     ],
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -44,6 +47,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun printerConfigDao(): PrinterConfigDao
     abstract fun printedJobDao(): PrintedJobDao
     abstract fun recentJobDao(): RecentJobDao
+    abstract fun printRunDao(): PrintRunDao
 
     companion object {
         /**
