@@ -84,6 +84,20 @@ class TsplEncoderTest {
         assertEquals(0xFF, bytes[start + 1].toInt() and 0xFF)
         assertTrue(text.endsWith("\r\nPRINT 1,2\r\n"))
     }
+
+    @Test fun blackMarkRollsUseBlineAndContinuousPaperHasNoGap() {
+        val mono = MonoBitmap(8, 1, byteArrayOf(0))
+        val mark = String(TsplEncoder.encode(mono, widthMm = 50, heightMm = 75, gapMm = 3, blackMark = true), Charsets.ISO_8859_1)
+        assertTrue(mark.startsWith("SIZE 50 mm,75 mm\r\nBLINE 3 mm,0 mm\r\n"))
+        assertFalse(mark.contains("GAP "))
+        val continuous = String(TsplEncoder.encode(mono, widthMm = 50, heightMm = 75, gapMm = 0), Charsets.ISO_8859_1)
+        assertTrue(continuous.contains("GAP 0 mm,0 mm\r\n"))
+    }
+
+    @Test fun calibrateMeasuresTheGapOrTheMark() {
+        assertEquals("GAPDETECT\r\n", String(TsplEncoder.calibrate(blackMark = false), Charsets.US_ASCII))
+        assertEquals("BLINEDETECT\r\n", String(TsplEncoder.calibrate(blackMark = true), Charsets.US_ASCII))
+    }
 }
 
 class JobTypeTest {

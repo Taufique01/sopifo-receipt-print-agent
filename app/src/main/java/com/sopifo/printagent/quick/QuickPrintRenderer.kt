@@ -33,6 +33,9 @@ enum class QuickLabelSize(val title: String, val w: Int, val h: Int) {
     S50X30("50 × 30 mm", 384, 240),
     S58X40("58 × 40 mm", 384, 320),
     S3X2("3 × 2 in", 609, 406),
+    S2X3("2 × 3 in (50 × 75 mm)", 400, 600),
+    S3X3("3 × 3 in (75 × 75 mm)", 600, 600),
+    S3X4("3 × 4 in (75 × 100 mm)", 600, 800),
     S4X6("4 × 6 in", 812, 1218),
 }
 
@@ -68,17 +71,32 @@ class QuickPrintRenderer(private val context: Context) {
         return fitToTarget(content, target)
     }
 
-    fun image(uri: Uri, target: QuickTarget): Bitmap {
+    /** An image fitted (whole image) or filled (covers, cropped) to the paper, then zoomed around the centre. */
+    fun image(uri: Uri, target: QuickTarget, fit: ImageFit = ImageFit.FIT, zoom: Float = 1f): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IllegalArgumentException("That file isn't an image this phone can read")
+        // Decode just big enough for the zoomed size, so a 12 MP photo never fills the memory.
+        val needed = (max(target.widthDots, target.heightDots ?: 0) * zoom.coerceAtLeast(1f)).roundToInt()
         var sample = 1
-        while (bounds.outWidth / (sample * 2) >= target.widthDots) sample *= 2
+        while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= needed) sample *= 2
         val decoded = context.contentResolver.openInputStream(uri).use {
             BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
         } ?: throw IllegalArgumentException("Couldn't open that image")
-        return fitToTarget(onWhite(decoded), target)
+        val margin = if (target.isLabel) (min(target.widthDots, target.heightDots!!) * 0.04f).roundToInt() else 0
+        val place = ImagePlacement.plan(decoded.width, decoded.height, target.widthDots, target.heightDots, fit, zoom, margin)
+        val out = createBitmap(target.widthDots, min(place.pageHeight, MAX_ROLL_HEIGHT))
+        Canvas(out).apply {
+            drawColor(Color.WHITE)
+            drawBitmap(decoded, null, Rect(place.left, place.top, place.left + place.width, place.top + place.height), Paint(Paint.FILTER_BITMAP_FLAG))
+        }
+        decoded.recycle()
+        return out
     }
+
+    /** HTML drawn by an off-screen WebView at the paper's width (see HtmlRenderer), fitted like any page. */
+    suspend fun html(html: String, target: QuickTarget): Bitmap =
+        fitToTarget(HtmlRenderer.render(context, html, target.widthDots, target.heightDots), target)
 
     fun pdfPageCount(uri: Uri): Int = openPdf(uri) { it.pageCount }
 
@@ -149,5 +167,7 @@ class QuickPrintRenderer(private val context: Context) {
 
     private companion object {
         const val DAY_MS = 24L * 60 * 60 * 1000
+        /** Longest roll print from one image (1.5 m at 8 dots/mm). */
+        const val MAX_ROLL_HEIGHT = 12000
     }
 }

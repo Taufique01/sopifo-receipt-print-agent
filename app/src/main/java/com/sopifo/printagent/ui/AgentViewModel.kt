@@ -200,6 +200,7 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
 
     fun savePrinter(role: PrinterRole, device: BondedDevice, protocol: PrinterProtocol) {
         viewModelScope.launch {
+            val previous = c.db.printerConfigDao().get(role)
             c.db.printerConfigDao().upsert(
                 PrinterConfigEntity(
                     role = role,
@@ -208,14 +209,30 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
                     protocol = protocol,
                     // Unused: the size comes from the dashboard-rendered image.
                     widthDots = PrintDataBuilder.MAX_ESC_POS_WIDTH,
-                    // Changing to another printer keeps the chosen paper width.
-                    paperWidthMm = c.db.printerConfigDao().get(role)?.paperWidthMm,
+                    // Changing to another printer keeps the chosen paper width and label gap.
+                    paperWidthMm = previous?.paperWidthMm,
+                    labelGapMm = previous?.labelGapMm ?: 2,
+                    labelBlackMark = previous?.labelBlackMark ?: false,
                     sendSpeedKbps = SendSpeed.FAST_KBPS,
                 ),
             )
             AppLog.i(TAG, "Printer saved", "role" to role, "name" to device.name)
             _message.value = "${role.label().replaceFirstChar { it.uppercase() }} printer saved"
             c.printers.probe(role)
+        }
+    }
+
+    /** Label printer measures its own gap / black mark (TSPL GAPDETECT / BLINEDETECT). */
+    fun calibrateLabels(role: PrinterRole) {
+        viewModelScope.launch {
+            _message.value = "Calibrating… the printer feeds a few labels"
+            _message.value = try {
+                c.printers.calibrate(role)
+                "Calibration sent. Labels should now stop at the gap."
+            } catch (e: Exception) {
+                AppLog.e(TAG, "Calibrate error", e)
+                "Calibration failed: ${e.message}"
+            }
         }
     }
 

@@ -42,7 +42,10 @@ data class PrinterConfigEntity(
     @ColumnInfo(name = "width_dots") val widthDots: Int,
     @ColumnInfo(name = "label_width_mm") val labelWidthMm: Int = 50,
     @ColumnInfo(name = "label_height_mm") val labelHeightMm: Int = 30,
+    /** TSPL: space between labels in mm (0 = continuous paper), or the black mark's height. */
     @ColumnInfo(name = "label_gap_mm") val labelGapMm: Int = 2,
+    /** TSPL: the roll has black marks on the back instead of gaps (BLINE). */
+    @ColumnInfo(name = "label_black_mark", defaultValue = "0") val labelBlackMark: Boolean = false,
     /** ESC/POS only: send a paper cut after each job. */
     @ColumnInfo(name = "cut_paper") val cutPaper: Boolean = true,
     /**

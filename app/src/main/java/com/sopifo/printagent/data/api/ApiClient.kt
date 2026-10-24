@@ -33,6 +33,8 @@ class ApiException(
     val code: String? = null,
     /** Where the seller unlocks a paid feature (website), sent with PRINT_LOCKED. */
     val unlockUrl: String? = null,
+    /** What unlocking costs (৳), sent with PRINT_LOCKED so the app can say "Pay ৳49". */
+    val price: Int? = null,
 ) : IOException(message, cause) {
     val retryable: Boolean get() = httpCode == null || httpCode == 408 || httpCode == 429 || httpCode >= 500
     val unauthorized: Boolean get() = httpCode == 401 || httpCode == 403
@@ -267,7 +269,7 @@ class ApiClient(
 
     /**
      * A failed answer as [ApiException]: the backend's `{ "error": "…" }` message (for errors the
-     * seller can act on), plus `code` and `unlock_url` when a paid feature is locked.
+     * seller can act on), plus `code`, `unlock_url` and `price` when a paid feature is locked.
      */
     private fun serverFailure(httpCode: Int, text: String?, fallback: String): ApiException {
         val body = try {
@@ -282,6 +284,7 @@ class ApiClient(
             field("error", 300) ?: fallback,
             code = field("code", 40),
             unlockUrl = field("unlock_url", 500),
+            price = (body?.get("price") as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
         )
     }
 

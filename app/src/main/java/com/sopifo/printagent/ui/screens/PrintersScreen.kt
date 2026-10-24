@@ -3,6 +3,7 @@ package com.sopifo.printagent.ui.screens
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,6 +27,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -60,7 +63,7 @@ fun PrintersScreen(vm: AgentViewModel) {
                 } else {
                     StatusRow("Name", config.name)
                     StatusRow("Bluetooth MAC", config.macAddress)
-                    PrinterSettings(config, vm::updatePrinterSettings)
+                    PrinterSettings(config, vm::updatePrinterSettings, onCalibrate = { vm.calibrateLabels(role) })
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { vm.loadBondedDevices(); picking = role }, modifier = Modifier.testTag("choose_${role.name.lowercase()}")) {
@@ -106,7 +109,7 @@ private fun savePicked(vm: AgentViewModel, role: PrinterRole, device: BondedDevi
 }
 
 @Composable
-private fun PrinterSettings(config: PrinterConfigEntity, onChange: (PrinterConfigEntity) -> Unit) {
+private fun PrinterSettings(config: PrinterConfigEntity, onChange: (PrinterConfigEntity) -> Unit, onCalibrate: () -> Unit) {
     SendSpeedSlider(config, onChange)
     Text("Command language", style = MaterialTheme.typography.labelLarge)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -133,9 +136,51 @@ private fun PrinterSettings(config: PrinterConfigEntity, onChange: (PrinterConfi
             )
         }
     }
+    if (config.protocol == PrinterProtocol.TSPL) LabelGapSettings(config, onChange, onCalibrate)
     // Layout size comes from the dashboard (the job image is rendered at that size).
     Text("Receipt and label layout size are set in the dashboard.", style = MaterialTheme.typography.bodySmall)
 }
+
+/**
+ * The label roll loaded in a TSPL printer: the gap between labels (0 = continuous paper), or a
+ * black mark on the back. Calibrate has the printer measure it itself (GAPDETECT / BLINEDETECT).
+ */
+@Composable
+private fun LabelGapSettings(config: PrinterConfigEntity, onChange: (PrinterConfigEntity) -> Unit, onCalibrate: () -> Unit) {
+    Text(if (config.labelBlackMark) "Black mark height" else "Gap between labels", style = MaterialTheme.typography.labelLarge)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (mm in GAP_CHOICES_MM) {
+            FilterChip(
+                selected = config.labelGapMm == mm,
+                onClick = { onChange(config.copy(labelGapMm = mm)) },
+                label = { Text(if (mm == 0 && !config.labelBlackMark) "None" else "$mm mm") },
+                modifier = Modifier.testTag("gap_$mm"),
+            )
+        }
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Black mark roll", style = MaterialTheme.typography.bodyMedium)
+            Text("Labels with a black line on the back instead of a gap.", style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(
+            checked = config.labelBlackMark,
+            onCheckedChange = { onChange(config.copy(labelBlackMark = it)) },
+            modifier = Modifier.testTag("black_mark"),
+        )
+    }
+    Text(
+        "Most label rolls have a 2 or 3 mm gap — measure the space between two labels. Choose None for continuous paper.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    OutlinedButton(onClick = onCalibrate, modifier = Modifier.testTag("calibrate_labels")) { Text("Calibrate") }
+    Text(
+        "Labels stopping in the wrong place? Calibrate: the printer feeds a few blank labels and measures them.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
+private val GAP_CHOICES_MM = listOf(0, 1, 2, 3, 4, 5, 6)
 
 /** Bluetooth send speed: slower for small portable printers that drop labels sent too fast. */
 @Composable

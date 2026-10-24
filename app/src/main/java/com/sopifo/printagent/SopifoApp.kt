@@ -14,6 +14,9 @@ class SopifoApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Quick print → HTML draws an off-screen WebView; without this only its "visible" part is drawn.
+        // Must run before any WebView exists.
+        android.webkit.WebView.enableSlowWholeDocumentDraw()
         AppLog.init(filesDir)
         CrashHandler.install(this)
         container = AppContainer(this)

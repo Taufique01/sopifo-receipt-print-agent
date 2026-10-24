@@ -4,6 +4,7 @@ import android.os.SystemClock
 import com.sopifo.printagent.core.AppLog
 import com.sopifo.printagent.data.db.PrinterConfigDao
 import com.sopifo.printagent.data.db.PrinterConfigEntity
+import com.sopifo.printagent.data.db.PrinterProtocol
 import com.sopifo.printagent.data.db.PrinterRole
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -238,6 +239,13 @@ class PrinterManager(
     suspend fun testPrint(role: PrinterRole) {
         val printer = printerDao.get(role) ?: throw PrintException(PrintFailure.NOT_CONFIGURED, "No ${role.name.lowercase()} printer configured")
         print(printer, withContext(Dispatchers.Default) { builder.testPage(printer) })
+    }
+
+    /** TSPL label printers: feed a few labels and measure the gap or black mark. */
+    suspend fun calibrate(role: PrinterRole) {
+        val printer = printerDao.get(role) ?: throw PrintException(PrintFailure.NOT_CONFIGURED, "No ${role.name.lowercase()} printer configured")
+        if (printer.protocol != PrinterProtocol.TSPL) throw PrintException(PrintFailure.NOT_CONFIGURED, "Calibration is for TSPL label printers")
+        print(printer, TsplEncoder.calibrate(printer.labelBlackMark))
     }
 
     /** Image decoding/thresholding is CPU-bound; keep it off the main thread whoever calls. */

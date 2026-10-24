@@ -137,6 +137,7 @@ class PrintPagesApiTest {
                 assertTrue(e.printLocked)
                 assertTrue(e.message!!.startsWith("Courier and bulk printing is locked"))
                 assertEquals("http://localhost:${server.port}/dashboard/print?unlock=1", e.unlockUrl)
+                assertEquals(49, e.price)
                 assertTrue(!e.unauthorized)
             }
         }

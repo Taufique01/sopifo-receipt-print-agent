@@ -19,12 +19,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PrintRunEntity::class,
         PrintRunItemEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), // printer_config.paper_width_mm
         AutoMigration(from = 4, to = 5, spec = AppDatabase.RemoveStickers::class),
         AutoMigration(from = 5, to = 6), // print_runs + print_run_items (the app's own prints)
+        AutoMigration(from = 6, to = 7), // printer_config.label_black_mark
     ],
 )
 abstract class AppDatabase : RoomDatabase() {

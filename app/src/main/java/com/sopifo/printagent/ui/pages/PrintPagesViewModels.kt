@@ -107,7 +107,7 @@ abstract class PrintListViewModel<P>(app: Application) : AndroidViewModel(app) {
 
     /** The locked state for a PRINT_LOCKED answer, else null. */
     protected fun lockOf(e: Exception): PrintLock? =
-        (e as? ApiException)?.takeIf { it.printLocked }?.let { PrintLock(it.message ?: "Printing is locked.", it.unlockUrl) }
+        (e as? ApiException)?.takeIf { it.printLocked }?.let { PrintLock(it.message ?: "Printing is locked.", it.unlockUrl, it.price) }
 
     protected companion object {
         const val RELOAD_AFTER_RUN_MS = 1_500L

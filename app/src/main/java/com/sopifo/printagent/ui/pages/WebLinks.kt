@@ -109,9 +109,12 @@ fun rememberServerBaseUrl(): String? {
 }
 
 /** Why the Orders / Shipping page is empty: courier & bulk printing isn't unlocked for this shop. */
-data class PrintLock(val message: String, val unlockUrl: String?)
+data class PrintLock(val message: String, val unlockUrl: String?, val price: Int? = null)
 
-/** Shown instead of the list when printing is locked: unlock on the website, or print from the dashboard. */
+/**
+ * Shown instead of the list when printing is locked. The pay button comes first: it opens Cloud Print
+ * on the website with the unlock dialog (EPS); printing from the dashboard stays as the free option.
+ */
 @Composable
 fun LockedCard(lock: PrintLock, baseUrl: String?) {
     val openDashboard = LocalOpenDashboard.current
@@ -122,13 +125,13 @@ fun LockedCard(lock: PrintLock, baseUrl: String?) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.Lock, contentDescription = null)
-                Text("Printing is locked", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text("Pay to use all printing features", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             }
-            Text(lock.message, style = MaterialTheme.typography.bodyMedium)
             Button(
                 onClick = { openDashboard(WebLinks.unlockPath(baseUrl, lock.unlockUrl)) },
                 modifier = Modifier.fillMaxWidth().testTag("unlock_printing"),
-            ) { Text("Unlock printing") }
+            ) { Text(lock.price?.let { "Pay ৳$it to unlock" } ?: "Pay to unlock printing") }
+            Text(lock.message, style = MaterialTheme.typography.bodyMedium)
             OutlinedButton(
                 onClick = { openDashboard(WebLinks.ORDERS) },
                 modifier = Modifier.fillMaxWidth().testTag("print_from_dashboard"),

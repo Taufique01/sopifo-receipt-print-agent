@@ -26,7 +26,9 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,15 +39,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sopifo.printagent.data.db.PrinterRole
+import com.sopifo.printagent.quick.HtmlRenderer
+import com.sopifo.printagent.quick.ImageFit
+import com.sopifo.printagent.quick.ImagePlacement
 import com.sopifo.printagent.quick.QuickLabelSize
 import com.sopifo.printagent.quick.QuickTextSize
 import com.sopifo.printagent.ui.screens.ScreenTitle
 import com.sopifo.printagent.ui.screens.SectionCard
+import kotlin.math.roundToInt
 
-/** Quick print: text, an image or a PDF on either printer, with a preview of what prints. */
+/** Quick print: text, an image, a PDF or HTML on either printer, with a preview of what prints. */
 @Composable
 fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
     val s by vm.state.collectAsStateWithLifecycle()
@@ -109,7 +116,48 @@ fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
                 }
                 QuickMode.IMAGE -> {
                     OutlinedButton(onClick = { pickImage.launch("image/*") }) { Text(if (s.imageUri == null) "Choose an image" else "Choose another image") }
-                    Text("Photos print in black and white, the width of the paper.", style = MaterialTheme.typography.bodySmall)
+                    if (s.imageUri != null) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            ImageFit.entries.forEach { fit ->
+                                FilterChip(
+                                    selected = s.imageFit == fit,
+                                    onClick = { vm.update { it.copy(imageFit = fit) } },
+                                    label = { Text(fit.title) },
+                                    modifier = Modifier.testTag("image_fit_${fit.name.lowercase()}"),
+                                )
+                            }
+                            TextButton(onClick = { vm.update { it.copy(imageFit = ImageFit.FIT, imageZoom = 1f) } }, enabled = s.imageZoom != 1f || s.imageFit != ImageFit.FIT) { Text("Reset") }
+                        }
+                        Text("Zoom ${(s.imageZoom * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
+                        Slider(
+                            value = s.imageZoom,
+                            onValueChange = { z -> vm.update { it.copy(imageZoom = (z * 20).roundToInt() / 20f) } },
+                            valueRange = ImagePlacement.MIN_ZOOM..ImagePlacement.MAX_ZOOM,
+                            modifier = Modifier.testTag("image_zoom"),
+                        )
+                    }
+                    Text(
+                        if (s.printerIsLabel) "Fit shows the whole photo on the label; Fill covers the label and trims the edges. Zoom in to print a part bigger."
+                        else "Photos print in black and white, the width of the paper. Zoom out for a smaller print, in to crop the sides.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                QuickMode.HTML -> {
+                    OutlinedTextField(
+                        value = s.html,
+                        onValueChange = { html -> vm.update { it.copy(html = html) } },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp).testTag("quick_html"),
+                        label = { Text("HTML") },
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { vm.update { it.copy(html = HtmlRenderer.SAMPLE) } }) { Text("Insert sample") }
+                        TextButton(onClick = { vm.update { it.copy(html = "") } }, enabled = s.html.isNotEmpty()) { Text("Clear") }
+                    }
+                    Text(
+                        "HTML and CSS (no JavaScript). 1 px = 1 printer dot (8 per mm); width:100% is the paper's width. Prints in black and white.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 QuickMode.PDF -> {
                     OutlinedButton(onClick = { pickPdf.launch("application/pdf") }) { Text(if (s.pdfUri == null) "Choose a PDF" else "Choose another PDF") }

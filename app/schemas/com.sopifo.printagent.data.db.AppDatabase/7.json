@@ -1,0 +1,420 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 7,
+    "identityHash": "f18e0d2032a03f182cdf1163ea799261",
+    "entities": [
+      {
+        "tableName": "device_config",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `device_id` TEXT NOT NULL, `store_name` TEXT NOT NULL, `device_name` TEXT NOT NULL, `api_base_url` TEXT NOT NULL, `registered_at` INTEGER NOT NULL, `last_sync_at` INTEGER, `fcm_token` TEXT, `fcm_token_synced` INTEGER NOT NULL, `session_valid` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "device_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "storeName",
+            "columnName": "store_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceName",
+            "columnName": "device_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "apiBaseUrl",
+            "columnName": "api_base_url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "registeredAt",
+            "columnName": "registered_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSyncAt",
+            "columnName": "last_sync_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fcmToken",
+            "columnName": "fcm_token",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fcmTokenSynced",
+            "columnName": "fcm_token_synced",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionValid",
+            "columnName": "session_valid",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "printer_config",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`role` TEXT NOT NULL, `name` TEXT NOT NULL, `mac_address` TEXT NOT NULL, `protocol` TEXT NOT NULL, `width_dots` INTEGER NOT NULL, `label_width_mm` INTEGER NOT NULL, `label_height_mm` INTEGER NOT NULL, `label_gap_mm` INTEGER NOT NULL, `label_black_mark` INTEGER NOT NULL DEFAULT 0, `cut_paper` INTEGER NOT NULL, `paper_width_mm` INTEGER, `send_speed_kbps` INTEGER NOT NULL DEFAULT 64, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`role`))",
+        "fields": [
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "macAddress",
+            "columnName": "mac_address",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "protocol",
+            "columnName": "protocol",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "widthDots",
+            "columnName": "width_dots",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "labelWidthMm",
+            "columnName": "label_width_mm",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "labelHeightMm",
+            "columnName": "label_height_mm",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "labelGapMm",
+            "columnName": "label_gap_mm",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "labelBlackMark",
+            "columnName": "label_black_mark",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "cutPaper",
+            "columnName": "cut_paper",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paperWidthMm",
+            "columnName": "paper_width_mm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sendSpeedKbps",
+            "columnName": "send_speed_kbps",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "64"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "role"
+          ]
+        }
+      },
+      {
+        "tableName": "printed_jobs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`job_id` TEXT NOT NULL, `state` TEXT NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`job_id`))",
+        "fields": [
+          {
+            "fieldPath": "jobId",
+            "columnName": "job_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "job_id"
+          ]
+        }
+      },
+      {
+        "tableName": "recent_jobs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`job_id` TEXT NOT NULL, `type` TEXT NOT NULL, `status` TEXT NOT NULL, `message` TEXT, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`job_id`))",
+        "fields": [
+          {
+            "fieldPath": "jobId",
+            "columnName": "job_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "message",
+            "columnName": "message",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "job_id"
+          ]
+        }
+      },
+      {
+        "tableName": "print_runs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `source` TEXT NOT NULL, `printer_role` TEXT NOT NULL, `state` TEXT NOT NULL, `total` INTEGER NOT NULL, `printed` INTEGER NOT NULL, `failed` INTEGER NOT NULL, `message` TEXT, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "printerRole",
+            "columnName": "printer_role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "total",
+            "columnName": "total",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "printed",
+            "columnName": "printed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failed",
+            "columnName": "failed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "message",
+            "columnName": "message",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "print_run_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`run_id` TEXT NOT NULL, `idx` INTEGER NOT NULL, `kind` TEXT NOT NULL, `ref_id` TEXT NOT NULL, `doc` TEXT NOT NULL, `title` TEXT NOT NULL, `status` TEXT NOT NULL, `reason` TEXT, `attempt` INTEGER NOT NULL, `reported` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`run_id`, `idx`))",
+        "fields": [
+          {
+            "fieldPath": "runId",
+            "columnName": "run_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "idx",
+            "columnName": "idx",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "refId",
+            "columnName": "ref_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "doc",
+            "columnName": "doc",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reason",
+            "columnName": "reason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attempt",
+            "columnName": "attempt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reported",
+            "columnName": "reported",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "run_id",
+            "idx"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_print_run_items_run_id",
+            "unique": false,
+            "columnNames": [
+              "run_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_print_run_items_run_id` ON `${TABLE_NAME}` (`run_id`)"
+          },
+          {
+            "name": "index_print_run_items_reported",
+            "unique": false,
+            "columnNames": [
+              "reported"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_print_run_items_reported` ON `${TABLE_NAME}` (`reported`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f18e0d2032a03f182cdf1163ea799261')"
+    ]
+  }
+}

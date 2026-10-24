@@ -96,6 +96,7 @@ class PrintDataBuilder {
                     heightMm = ceilDiv(mono.height, TsplEncoder.DOTS_PER_MM),
                     gapMm = printer.labelGapMm,
                     copies = copies,
+                    blackMark = printer.labelBlackMark,
                 )
             }
             return PrintData(bytes, note)

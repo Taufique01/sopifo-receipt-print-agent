@@ -33,11 +33,15 @@ object EscPosEncoder {
 object TsplEncoder {
     const val DOTS_PER_MM = 8
 
-    fun encode(image: MonoBitmap, widthMm: Int, heightMm: Int, gapMm: Int, copies: Int = 1): ByteArray {
+    /**
+     * [gapMm] is the space between labels (0 = continuous paper); with [blackMark] it is the height
+     * of the black mark printed on the back of the roll instead (BLINE).
+     */
+    fun encode(image: MonoBitmap, widthMm: Int, heightMm: Int, gapMm: Int, copies: Int = 1, blackMark: Boolean = false): ByteArray {
         val out = ByteArrayOutputStream(image.data.size + 256)
         val header = buildString {
             append("SIZE $widthMm mm,$heightMm mm\r\n")
-            append("GAP $gapMm mm,0 mm\r\n")
+            append("${if (blackMark) "BLINE" else "GAP"} ${gapMm.coerceIn(0, MAX_GAP_MM)} mm,0 mm\r\n")
             append("DIRECTION 1\r\n")
             append("REFERENCE 0,0\r\n")
             append("CLS\r\n")
@@ -50,6 +54,12 @@ object TsplEncoder {
         out.write("\r\nPRINT 1,${copies.coerceIn(1, MAX_COPIES)}\r\n".toByteArray(Charsets.US_ASCII))
         return out.toByteArray()
     }
+
+    /** Has the printer feed a few labels and measure the label length and gap (or black mark) itself. */
+    fun calibrate(blackMark: Boolean): ByteArray =
+        "${if (blackMark) "BLINEDETECT" else "GAPDETECT"}\r\n".toByteArray(Charsets.US_ASCII)
+
+    const val MAX_GAP_MM = 10
 }
 
 const val MAX_COPIES = 10
