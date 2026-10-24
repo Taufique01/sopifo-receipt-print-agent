@@ -50,6 +50,8 @@ object WebLinks {
     const val ORDERS = "dashboard/orders"
     const val COURIERS = "dashboard/couriers"
     const val BILLING = "dashboard/billing"
+    /** How to delete the Sopifo account and the app's data (Google Play's account deletion link). */
+    const val DATA_DELETION = "data-deletion"
     /** Where the seller dashboard lives (before pairing, the app doesn't know its server yet). */
     private const val FALLBACK_BASE = "https://app.sopifo.com"
 

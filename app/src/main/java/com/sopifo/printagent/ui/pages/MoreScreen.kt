@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.HorizontalDivider
@@ -43,6 +44,7 @@ enum class MorePage(val title: String, val subtitle: String) {
     LOCK("App lock", "PIN or fingerprint for orders and shipping"),
     DIAGNOSTICS("Diagnostics", "Status, logs, send logs to support, re-register"),
     HELP("Help", "Setting up the printer and this app"),
+    DELETE("Delete account & data", "How to delete your Sopifo account and this app's data"),
 }
 
 /** More: Activity plus the setup and support pages, used rarely after setup. */
@@ -57,6 +59,7 @@ fun MoreScreen(
     lockedContent: @Composable (@Composable () -> Unit) -> Unit,
 ) {
     var page by rememberSaveable { mutableStateOf<MorePage?>(null) }
+    val openWeb = rememberOpenWeb()
     LaunchedEffect(openRequest) {
         if (openRequest != null) {
             page = openRequest
@@ -68,7 +71,13 @@ fun MoreScreen(
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             ScreenTitle("More")
             MorePage.entries.forEach { p ->
-                MoreRow(p, icon(p)) { if (p == MorePage.HELP) onHelp() else page = p }
+                MoreRow(p, icon(p)) {
+                    when (p) {
+                        MorePage.HELP -> onHelp()
+                        MorePage.DELETE -> openWeb(WebLinks.DATA_DELETION)
+                        else -> page = p
+                    }
+                }
                 HorizontalDivider()
             }
         }
@@ -87,7 +96,7 @@ fun MoreScreen(
             MorePage.PRINTERS -> PrintersScreen(agent)
             MorePage.LOCK -> lockedContent { AppLockSettings(lock) }
             MorePage.DIAGNOSTICS -> DiagnosticsScreen(agent)
-            MorePage.HELP -> Unit
+            MorePage.HELP, MorePage.DELETE -> Unit
         }
     }
 }
@@ -98,6 +107,7 @@ private fun icon(p: MorePage): ImageVector = when (p) {
     MorePage.LOCK -> Icons.Filled.Lock
     MorePage.DIAGNOSTICS -> AppIcons.Pulse
     MorePage.HELP -> Icons.Filled.Info
+    MorePage.DELETE -> Icons.Filled.Delete
 }
 
 @Composable

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -123,6 +124,7 @@ fun RegistrationScreen(vm: AgentViewModel, onHelp: () -> Unit) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 LinkButton("Open Cloud Print page", AppIcons.OpenInNew, Modifier.testTag("open_cloud_print")) { openWeb(WebLinks.CLOUD_PRINT) }
                 LinkButton("Printer setup help", Icons.Filled.Info, Modifier.testTag("printer_help"), onHelp)
+                LinkButton("Delete account & data", Icons.Filled.Delete, Modifier.testTag("delete_account")) { openWeb(WebLinks.DATA_DELETION) }
             }
         }
     }

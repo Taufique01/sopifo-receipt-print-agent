@@ -103,6 +103,8 @@ class AppUiTest {
             compose.onNodeWithTag("sopifo_logo").assertIsDisplayed()
             compose.onNodeWithTag("open_cloud_print").assertIsDisplayed()
             compose.onNodeWithTag("printer_help").assertIsDisplayed()
+            // Google Play: the account deletion page is reachable before pairing.
+            compose.onNodeWithTag("delete_account").performScrollTo().assertIsDisplayed()
         }
     }
 
@@ -121,7 +123,7 @@ class AppUiTest {
             compose.onNodeWithTag("more_back").performClick()
             // More: Activity, Printers, App lock, Diagnostics, Help; no Sopifo dashboard section.
             compose.onNodeWithTag("dashboard_links").assertDoesNotExist()
-            for (row in listOf("activity", "printers", "lock", "diagnostics", "help")) {
+            for (row in listOf("activity", "printers", "lock", "diagnostics", "help", "delete")) {
                 compose.onNodeWithTag("more_$row").assertIsDisplayed()
             }
         }
