@@ -9,12 +9,10 @@ import com.sopifo.printagent.SopifoApp
 import com.sopifo.printagent.data.db.PrinterProtocol
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.print.PrintDataBuilder
-import com.sopifo.printagent.quick.HtmlRenderer
 import com.sopifo.printagent.quick.ImageFit
 import com.sopifo.printagent.quick.QuickLabelSize
 import com.sopifo.printagent.quick.QuickPrintRenderer
 import com.sopifo.printagent.quick.QuickTarget
-import com.sopifo.printagent.quick.QuickTextSize
 import com.sopifo.printagent.runs.ApiRunContent
 import com.sopifo.printagent.runs.NewRunItem
 import kotlinx.coroutines.Dispatchers
@@ -27,20 +25,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class QuickMode(val title: String) { TEXT("Text"), IMAGE("Image"), PDF("PDF"), HTML("HTML") }
+enum class QuickMode(val title: String) { TEXT("Text"), IMAGE("Image"), PDF("PDF") }
 
 data class QuickPrintState(
     val mode: QuickMode = QuickMode.TEXT,
     val role: PrinterRole = PrinterRole.RECEIPT,
-    val text: String = "",
-    val textSize: QuickTextSize = QuickTextSize.MEDIUM,
-    val bold: Boolean = false,
-    val center: Boolean = true,
     val imageUri: Uri? = null,
     /** Image: show it whole (Fit) or cover the label (Fill), then zoom around the centre. */
     val imageFit: ImageFit = ImageFit.FIT,
     val imageZoom: Float = 1f,
-    val html: String = HtmlRenderer.SAMPLE,
+    /** Text tab: the rich text as HTML (bold, sizes, alignment…), printed as shown. */
+    val html: String = "",
     val pdfUri: Uri? = null,
     val pdfPages: Int = 0,
     val pageFrom: Int = 1,
@@ -95,8 +90,8 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
     private fun refreshPreview() {
         previewJob?.cancel()
         previewJob = viewModelScope.launch {
-            // HTML goes through a WebView: wait for a pause in typing.
-            delay(if (_state.value.mode == QuickMode.HTML) 700 else 250)
+            // Text is drawn by a WebView: wait for a pause in typing.
+            delay(if (_state.value.mode == QuickMode.TEXT) 600 else 250)
             try {
                 val bitmaps = withContext(Dispatchers.Default) { render(firstOnly = true) }
                 _state.update { it.copy(preview = bitmaps.firstOrNull(), error = null) }
@@ -123,9 +118,8 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
         val s = _state.value
         val target = target()
         return when (s.mode) {
-            QuickMode.TEXT -> if (s.text.isBlank()) emptyList() else listOf(renderer.text(s.text, s.textSize, s.bold, s.center, target))
+            QuickMode.TEXT -> if (s.html.isBlank()) emptyList() else listOf(renderer.html(s.html, target))
             QuickMode.IMAGE -> s.imageUri?.let { listOf(renderer.image(it, target, s.imageFit, s.imageZoom)) } ?: emptyList()
-            QuickMode.HTML -> if (s.html.isBlank()) emptyList() else listOf(renderer.html(s.html, target))
             QuickMode.PDF -> s.pdfUri?.let {
                 val to = if (firstOnly) s.pageFrom else s.pageTo
                 renderer.pdfPages(it, s.pageFrom, to, target)
@@ -145,7 +139,6 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
                         QuickMode.TEXT -> "Type something to print"
                         QuickMode.IMAGE -> "Choose an image first"
                         QuickMode.PDF -> "Choose a PDF first"
-                        QuickMode.HTML -> "Write some HTML to print"
                     }
                     return@launch
                 }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The Sopifo dashboard opens as a Trusted Web Activity (no address bar) once app.sopifo.com
+      confirms this app in https://app.sopifo.com/.well-known/assetlinks.json (package + signing
+      SHA-256). Until then it opens as a normal Chrome tab.
+    -->
+    <string name="asset_statements" translatable="false">
+        [{
+            \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+            \"target\": {\"namespace\": \"web\", \"site\": \"https://app.sopifo.com\"}
+        }]
+    </string>
+</resources>

@@ -39,37 +39,11 @@ enum class QuickLabelSize(val title: String, val w: Int, val h: Int) {
     S4X6("4 × 6 in", 812, 1218),
 }
 
-enum class QuickTextSize(val title: String, val dotsPerChar: Float) {
-    SMALL("Small", 22f),
-    MEDIUM("Medium", 30f),
-    LARGE("Large", 44f),
-}
-
 /**
  * Draws quick prints on the phone (no server): text, an image, or PDF pages, as black-on-white
  * bitmaps the size of the paper. The printer manager turns them into printer bytes as usual.
  */
 class QuickPrintRenderer(private val context: Context) {
-
-    fun text(text: String, size: QuickTextSize, bold: Boolean, center: Boolean, target: QuickTarget): Bitmap {
-        val pad = 12
-        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            textSize = size.dotsPerChar
-            typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-        }
-        val width = target.widthDots - pad * 2
-        val layout = StaticLayout.Builder.obtain(text.ifEmpty { " " }, 0, text.ifEmpty { " " }.length, paint, width)
-            .setAlignment(if (center) Layout.Alignment.ALIGN_CENTER else Layout.Alignment.ALIGN_NORMAL)
-            .build()
-        val content = createBitmap(target.widthDots, layout.height + pad * 2)
-        Canvas(content).apply {
-            drawColor(Color.WHITE)
-            translate(pad.toFloat(), pad.toFloat())
-            layout.draw(this)
-        }
-        return fitToTarget(content, target)
-    }
 
     /** An image fitted (whole image) or filled (covers, cropped) to the paper, then zoomed around the centre. */
     fun image(uri: Uri, target: QuickTarget, fit: ImageFit = ImageFit.FIT, zoom: Float = 1f): Bitmap {

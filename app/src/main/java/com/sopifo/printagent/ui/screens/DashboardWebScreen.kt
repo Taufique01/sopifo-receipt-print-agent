@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -144,6 +145,10 @@ fun DashboardWebScreen(url: String, onClose: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        // MATCH_PARENT, not AndroidView's default WRAP_CONTENT: with wrap-content the
+                        // WebView reports a viewport height of 0, so CSS 100vh / 100dvh became 0 and
+                        // full-screen dialogs (Add order) collapsed to a thin strip.
+                        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.userAgentString = "${settings.userAgentString} SopifoPrint"

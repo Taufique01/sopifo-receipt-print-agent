@@ -93,7 +93,8 @@ class AppUiTest {
             compose.onNodeWithTag("scan_qr").assertIsDisplayed()
             compose.onNodeWithTag("token_input").performTextInput("not/a valid;code")
             compose.onNodeWithTag("register_button").performClick()
-            compose.onNodeWithTag("registration_error").assertIsDisplayed()
+            // The screen scrolls when the keyboard is open: bring the error into view first.
+            compose.onNodeWithTag("registration_error").performScrollTo().assertIsDisplayed()
         }
     }
 
@@ -105,17 +106,24 @@ class AppUiTest {
         }
     }
 
-    @Test fun registeredDeviceShowsDashboardButtonCloudPrintAndDashboardLinks() {
+    @Test fun registeredDeviceShowsDashboardIconPrintersAndNoDashboardPages() {
         runBlocking { container.device.register(RegistrationCode("ui-test-token", "http://localhost:${server.port}")) }
         launch().use {
             compose.waitUntil(10_000) { compose.onAllNodes(hasText("UI Test Store")).fetchSemanticsNodes().isNotEmpty() }
-            // The dashboard icon replaced the "i" help icon in the top bar.
+            // Top right: the dashboard icon (opens app.sopifo.com in Chrome); no Cloud Print on Home.
             compose.onNodeWithTag("dashboard_button").assertIsDisplayed()
             compose.onNodeWithTag("help_button").assertDoesNotExist()
-            compose.onNodeWithTag("home_cloud_print").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithTag("tab_more").performClick()
-            compose.onNodeWithTag("dashboard_links").assertIsDisplayed()
-            compose.onNodeWithTag("web_dashboard").assertIsDisplayed()
+            compose.onNodeWithTag("home_cloud_print").assertDoesNotExist()
+            compose.onNodeWithTag("cloud_print_link").assertDoesNotExist()
+            // Home → Printers opens More → Printers.
+            compose.onNodeWithTag("home_printers").performScrollTo().performClick()
+            compose.onNodeWithText("Receipt printer").assertIsDisplayed()
+            compose.onNodeWithTag("more_back").performClick()
+            // More: Activity, Printers, App lock, Diagnostics, Help; no Sopifo dashboard section.
+            compose.onNodeWithTag("dashboard_links").assertDoesNotExist()
+            for (row in listOf("activity", "printers", "lock", "diagnostics", "help")) {
+                compose.onNodeWithTag("more_$row").assertIsDisplayed()
+            }
         }
     }
 

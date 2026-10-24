@@ -3,7 +3,11 @@ package com.sopifo.printagent.ui.screens
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,7 +20,10 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -34,7 +41,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,6 +54,7 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.sopifo.printagent.R
 import com.sopifo.printagent.ui.AgentViewModel
 import com.sopifo.printagent.ui.pages.WebLinks
+import com.sopifo.printagent.ui.theme.AppIcons
 import com.sopifo.printagent.ui.pages.rememberOpenWeb
 
 @Composable
@@ -56,9 +67,10 @@ fun RegistrationScreen(vm: AgentViewModel, onHelp: () -> Unit) {
     // Not paired yet: links go to sopifo.com.
     val openWeb = rememberOpenWeb(baseUrl = null)
 
-    Box(Modifier.fillMaxSize()) {
+    // Centred when it fits; scrolls when it doesn't (small screens, keyboard open, error shown).
+    BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
         Column(
-            Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -107,11 +119,10 @@ fun RegistrationScreen(vm: AgentViewModel, onHelp: () -> Unit) {
                 Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("registration_error"))
             }
             Spacer(Modifier.height(8.dp))
-            // Quiet links: where the QR code / token is (log in on this phone if there's no computer), and help.
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                QuietLink("Open Cloud Print page", Modifier.testTag("open_cloud_print")) { openWeb(WebLinks.CLOUD_PRINT) }
-                Text("·", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                QuietLink("Printer setup help", Modifier.testTag("printer_help"), onHelp)
+            // Links: where the QR code / token is (log in on this phone if there's no computer), and help.
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                LinkButton("Open Cloud Print page", AppIcons.OpenInNew, Modifier.testTag("open_cloud_print")) { openWeb(WebLinks.CLOUD_PRINT) }
+                LinkButton("Printer setup help", Icons.Filled.Info, Modifier.testTag("printer_help"), onHelp)
             }
         }
     }
@@ -136,9 +147,17 @@ private fun SopifoLogo() {
     }
 }
 
+/** A link that looks like one: brand colour, underlined, with an icon, and a full-size tap target. */
 @Composable
-private fun QuietLink(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    TextButton(onClick = onClick, modifier = modifier, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
-        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun LinkButton(text: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    TextButton(onClick = onClick, modifier = modifier, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            textDecoration = TextDecoration.Underline,
+        )
     }
 }

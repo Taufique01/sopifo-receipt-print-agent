@@ -84,6 +84,8 @@ ksp {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    // Sopifo dashboard as a Trusted Web Activity (full screen, no address bar) with a Custom Tab fallback.
+    implementation(libs.androidbrowserhelper)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

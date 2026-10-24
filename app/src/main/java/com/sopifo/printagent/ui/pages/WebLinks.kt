@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -33,6 +34,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.google.androidbrowserhelper.trusted.TwaLauncher
 import com.sopifo.printagent.SopifoApp
 import com.sopifo.printagent.ui.theme.AppIcons
 
@@ -87,6 +89,19 @@ object WebLinks {
     }
 }
 
+/**
+ * Opens a dashboard page as a Trusted Web Activity: full screen, no address bar, once
+ * app.sopifo.com confirms this app (/.well-known/assetlinks.json); otherwise TwaLauncher falls
+ * back to a Chrome Custom Tab. The launcher is released when the screen goes away.
+ */
+@Composable
+fun rememberOpenTrusted(baseUrl: String? = rememberServerBaseUrl()): (path: String) -> Unit {
+    val context = LocalContext.current
+    val launcher = remember(context) { TwaLauncher(context) }
+    DisposableEffect(launcher) { onDispose { launcher.destroy() } }
+    return remember(launcher, baseUrl) { { path -> launcher.launch(Uri.parse(WebLinks.url(baseUrl, path))) } }
+}
+
 /** Opens a website page in a Custom Tab with the app's colour: `openWeb(WebLinks.ORDERS)`. */
 @Composable
 fun rememberOpenWeb(baseUrl: String? = rememberServerBaseUrl()): (path: String) -> Unit {
@@ -136,65 +151,6 @@ fun LockedCard(lock: PrintLock, baseUrl: String?) {
                 onClick = { openDashboard(WebLinks.ORDERS) },
                 modifier = Modifier.fillMaxWidth().testTag("print_from_dashboard"),
             ) { Text("Print from dashboard") }
-        }
-    }
-}
-
-/** "Linked to Cloud Print": set-up, history and unlocking live on the website (log in there). */
-@Composable
-fun CloudPrintLinkCard(modifier: Modifier = Modifier) {
-    val openDashboard = LocalOpenDashboard.current
-    Card(modifier.fillMaxWidth().testTag("cloud_print_link")) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(AppIcons.Print, contentDescription = null)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Linked to Cloud Print", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "Set up printing, see history and unlock courier printing on the Sopifo website.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            OutlinedButton(
-                onClick = { openDashboard(WebLinks.CLOUD_PRINT) },
-                modifier = Modifier.testTag("visit_cloud_print"),
-            ) { Text("Visit to log in") }
-        }
-    }
-}
-
-/** More → "Sopifo dashboard": the dashboard pages sellers use most, opened inside the app. */
-@Composable
-fun DashboardLinksCard(modifier: Modifier = Modifier) {
-    val openDashboard = LocalOpenDashboard.current
-    val links = listOf(
-        Triple("Dashboard", "Overview, products and settings", WebLinks.DASHBOARD),
-        Triple("Orders", "Create and manage orders, print one at a time", WebLinks.ORDERS),
-        Triple("Couriers", "Book Steadfast / Pathao, track parcels", WebLinks.COURIERS),
-        Triple("Cloud Print", "Pair phones, print settings, unlock printing", WebLinks.CLOUD_PRINT),
-        Triple("Plan & payments", "Pro plan, AI credits and payments", WebLinks.BILLING),
-    )
-    Card(modifier.fillMaxWidth().testTag("dashboard_links")) {
-        Column(Modifier.padding(vertical = 8.dp)) {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Sopifo dashboard", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Text("Opens inside the app", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            links.forEach { (title, subtitle, path) ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { openDashboard(path) }
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                        .testTag("web_${path.substringAfterLast('/')}"),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(title, style = MaterialTheme.typography.bodyLarge)
-                        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open $title", modifier = Modifier.size(18.dp))
-                }
-            }
         }
     }
 }

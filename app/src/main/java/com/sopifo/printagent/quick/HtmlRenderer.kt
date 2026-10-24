@@ -17,23 +17,15 @@ import kotlinx.coroutines.withTimeout
 import kotlin.math.ceil
 
 /**
- * Quick print → HTML: the seller's HTML drawn by an off-screen WebView, one CSS pixel per printer
- * dot (8 per mm), so `width:100%` is the paper's width. JavaScript and file access are off;
+ * Quick print → Text: the rich text (HTML from RichTextEditor) drawn by an off-screen WebView, one
+ * CSS pixel per printer dot (8 per mm), so `width:100%` is the paper's width. Font sizes from the
+ * editor (<font size>) are relative to the 24-dot base. JavaScript and file access are off;
  * links don't navigate. Needs WebView.enableSlowWholeDocumentDraw() (SopifoApp) to draw it all.
  */
 object HtmlRenderer {
     /** Tallest HTML print from a roll (75 cm). */
     const val MAX_HEIGHT = 6000
     private const val TIMEOUT_MS = 15_000L
-
-    /** Starter shown in the editor. */
-    const val SAMPLE = """<h2 style="text-align:center;margin:8px 0">Sopifo Shop</h2>
-<p style="text-align:center;margin:0">Thank you for your order!</p>
-<hr>
-<table style="width:100%">
-  <tr><td>T-shirt × 2</td><td style="text-align:right">৳900</td></tr>
-  <tr><td><b>Total</b></td><td style="text-align:right"><b>৳900</b></td></tr>
-</table>"""
 
     suspend fun render(context: Context, html: String, widthPx: Int, heightPx: Int?): Bitmap = withContext(Dispatchers.Main) {
         withTimeout(TIMEOUT_MS) {
@@ -79,6 +71,6 @@ object HtmlRenderer {
     /** Wraps the seller's HTML (a fragment or a whole page) with a viewport as wide as the paper. */
     private fun document(html: String, widthPx: Int) = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=$widthPx">
-<style>html,body{margin:0;padding:6px;box-sizing:border-box;width:${widthPx}px;background:#fff;color:#000;font-family:sans-serif;font-size:24px}img{max-width:100%}table{border-collapse:collapse}</style>
+<style>html,body{margin:0;padding:6px;box-sizing:border-box;width:${widthPx}px;background:#fff;color:#000;font-family:sans-serif;font-size:24px}img{max-width:100%}table{border-collapse:collapse}ul{margin:0;padding-left:1.2em}font[size="1"]{font-size:.6em}font[size="2"]{font-size:.8em}font[size="3"]{font-size:1em}font[size="4"]{font-size:1.25em}font[size="5"]{font-size:1.5em}font[size="6"]{font-size:2em}font[size="7"]{font-size:2.5em}</style>
 </head><body>$html</body></html>"""
 }

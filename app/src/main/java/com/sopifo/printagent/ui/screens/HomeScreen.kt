@@ -29,15 +29,12 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.ui.AgentViewModel
-import com.sopifo.printagent.ui.pages.CloudPrintLinkCard
-import com.sopifo.printagent.ui.pages.LocalOpenDashboard
-import com.sopifo.printagent.ui.pages.WebLinks
 import com.sopifo.printagent.ui.theme.AppIcons
 
 // BatteryLife: an unattended print agent must not be deferred by Doze; see README "Battery exemption".
 @SuppressLint("BatteryLife")
 @Composable
-fun HomeScreen(vm: AgentViewModel, onRequestPermissions: () -> Unit) {
+fun HomeScreen(vm: AgentViewModel, onRequestPermissions: () -> Unit, onOpenPrinters: () -> Unit) {
     val context = LocalContext.current
     val config by vm.deviceConfig.collectAsStateWithLifecycle()
     val online by vm.cloudOnline.collectAsStateWithLifecycle()
@@ -65,8 +62,6 @@ fun HomeScreen(vm: AgentViewModel, onRequestPermissions: () -> Unit) {
             StatusRow("Last sync", formatAgo(config?.lastSyncAt), tag = "last_sync")
         }
 
-        CloudPrintLinkCard()
-
         SectionCard(title = "Test print") {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TestPrintButton("Receipt", Modifier.weight(1f).testTag("test_receipt")) { vm.testPrint(PrinterRole.RECEIPT) }
@@ -87,12 +82,11 @@ fun HomeScreen(vm: AgentViewModel, onRequestPermissions: () -> Unit) {
             }
         }
 
-        // Cloud Print (dashboard) inside the app: pairing, print settings, history, unlocking printing.
-        val openDashboard = LocalOpenDashboard.current
-        Button(onClick = { openDashboard(WebLinks.CLOUD_PRINT) }, modifier = Modifier.fillMaxWidth().testTag("home_cloud_print")) {
+        // Printers: choose printers, send speed, label gap, calibrate (More → Printers).
+        Button(onClick = onOpenPrinters, modifier = Modifier.fillMaxWidth().testTag("home_printers")) {
             Icon(AppIcons.Print, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Cloud Print")
+            Text("Printers")
         }
     }
 }

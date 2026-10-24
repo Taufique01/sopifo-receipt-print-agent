@@ -39,20 +39,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sopifo.printagent.data.db.PrinterRole
-import com.sopifo.printagent.quick.HtmlRenderer
 import com.sopifo.printagent.quick.ImageFit
 import com.sopifo.printagent.quick.ImagePlacement
 import com.sopifo.printagent.quick.QuickLabelSize
-import com.sopifo.printagent.quick.QuickTextSize
 import com.sopifo.printagent.ui.screens.ScreenTitle
 import com.sopifo.printagent.ui.screens.SectionCard
 import kotlin.math.roundToInt
 
-/** Quick print: text, an image, a PDF or HTML on either printer, with a preview of what prints. */
+/** Quick print: formatted text, an image or a PDF on either printer, with a preview of what prints. */
 @Composable
 fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
     val s by vm.state.collectAsStateWithLifecycle()
@@ -100,19 +97,8 @@ fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
         SectionCard(title = s.mode.title) {
             when (s.mode) {
                 QuickMode.TEXT -> {
-                    OutlinedTextField(
-                        value = s.text,
-                        onValueChange = { text -> vm.update { it.copy(text = text) } },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp).testTag("quick_text"),
-                        label = { Text("What to print") },
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        QuickTextSize.entries.forEach { size ->
-                            FilterChip(selected = s.textSize == size, onClick = { vm.update { it.copy(textSize = size) } }, label = { Text(size.title) })
-                        }
-                    }
-                    Toggle("Bold", s.bold) { on -> vm.update { it.copy(bold = on) } }
-                    Toggle("Centre", s.center) { on -> vm.update { it.copy(center = on) } }
+                    RichTextEditor(html = s.html, onChange = { html -> vm.update { it.copy(html = html) } })
+                    Text("Formatting prints as shown in the preview below.", style = MaterialTheme.typography.bodySmall)
                 }
                 QuickMode.IMAGE -> {
                     OutlinedButton(onClick = { pickImage.launch("image/*") }) { Text(if (s.imageUri == null) "Choose an image" else "Choose another image") }
@@ -139,23 +125,6 @@ fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
                     Text(
                         if (s.printerIsLabel) "Fit shows the whole photo on the label; Fill covers the label and trims the edges. Zoom in to print a part bigger."
                         else "Photos print in black and white, the width of the paper. Zoom out for a smaller print, in to crop the sides.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                QuickMode.HTML -> {
-                    OutlinedTextField(
-                        value = s.html,
-                        onValueChange = { html -> vm.update { it.copy(html = html) } },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp).testTag("quick_html"),
-                        label = { Text("HTML") },
-                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { vm.update { it.copy(html = HtmlRenderer.SAMPLE) } }) { Text("Insert sample") }
-                        TextButton(onClick = { vm.update { it.copy(html = "") } }, enabled = s.html.isNotEmpty()) { Text("Clear") }
-                    }
-                    Text(
-                        "HTML and CSS (no JavaScript). 1 px = 1 printer dot (8 per mm); width:100% is the paper's width. Prints in black and white.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -191,14 +160,6 @@ fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
             if (s.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
             Text(if (s.busy) "  Preparing…" else "Print")
         }
-    }
-}
-
-@Composable
-private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 

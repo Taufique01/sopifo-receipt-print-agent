@@ -49,6 +49,7 @@ import com.sopifo.printagent.SopifoApp
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.ui.pages.ActivityViewModel
 import com.sopifo.printagent.ui.pages.LocalOpenDashboard
+import com.sopifo.printagent.ui.pages.rememberOpenTrusted
 import com.sopifo.printagent.ui.pages.LockGate
 import com.sopifo.printagent.ui.pages.MorePage
 import com.sopifo.printagent.ui.pages.MoreScreen
@@ -95,10 +96,11 @@ fun AppRoot(
     }
 }
 
-/** Top-bar button that opens the Sopifo dashboard inside the app (help lives in More). */
+/** Top-bar button: the Sopifo dashboard (app.sopifo.com) full screen in Chrome, without the address bar. */
 @Composable
-private fun DashboardButton(onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.testTag("dashboard_button")) {
+private fun DashboardButton() {
+    val openTrusted = rememberOpenTrusted()
+    IconButton(onClick = { openTrusted(WebLinks.DASHBOARD) }, modifier = Modifier.testTag("dashboard_button")) {
         Icon(AppIcons.Dashboard, contentDescription = "Sopifo dashboard")
     }
 }
@@ -147,7 +149,7 @@ private fun MainTabs(
                 title = { Text("Sopifo Print") },
                 actions = {
                     PrinterStatusChips(vm)
-                    DashboardButton { dashboardPath = WebLinks.DASHBOARD }
+                    DashboardButton()
                 },
             )
         },
@@ -170,7 +172,7 @@ private fun MainTabs(
     ) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                Tab.HOME -> HomeScreen(vm, onRequestPermissions)
+                Tab.HOME -> HomeScreen(vm, onRequestPermissions, onOpenPrinters = { tab = Tab.MORE; moreRequest = MorePage.PRINTERS })
                 Tab.ORDERS -> locked { OrdersScreen(viewModel(), snackbar) }
                 Tab.SHIPPING -> locked { ShippingScreen(viewModel(), snackbar) }
                 Tab.QUICK -> QuickPrintScreen(viewModel(), snackbar)
@@ -191,9 +193,9 @@ private fun PrinterStatusChips(vm: AgentViewModel) {
     val configs by vm.printerConfigs.collectAsStateWithLifecycle()
     val status by vm.printerStatus.collectAsStateWithLifecycle()
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Both printers always: green / red when set up, grey when not chosen yet.
         for (role in PrinterRole.entries) {
-            if (configs.none { it.role == role }) continue
-            val good = printerStateGood(status[role])
+            val good = if (configs.none { it.role == role }) null else printerStateGood(status[role])
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("printer_chip_${role.name.lowercase()}")) {
                 Surface(Modifier.size(8.dp), shape = CircleShape, color = when (good) { true -> StatusGood; false -> StatusBad; null -> StatusNeutral }) {}
                 Text(
