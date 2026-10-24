@@ -67,6 +67,7 @@ fun MoreScreen(
     if (current == null) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             ScreenTitle("More")
+            DashboardLinksCard(Modifier.padding(vertical = 8.dp))
             MorePage.entries.forEach { p ->
                 MoreRow(p, icon(p)) { if (p == MorePage.HELP) onHelp() else page = p }
                 HorizontalDivider()

@@ -29,10 +29,16 @@ class ApiException(
     cause: Throwable? = null,
     /** The backend answered, but the body did not match the contract. */
     val malformed: Boolean = false,
+    /** The backend's machine-readable `code`, e.g. "PRINT_LOCKED". */
+    val code: String? = null,
+    /** Where the seller unlocks a paid feature (website), sent with PRINT_LOCKED. */
+    val unlockUrl: String? = null,
 ) : IOException(message, cause) {
     val retryable: Boolean get() = httpCode == null || httpCode == 408 || httpCode == 429 || httpCode >= 500
     val unauthorized: Boolean get() = httpCode == 401 || httpCode == 403
     val notFound: Boolean get() = httpCode == 404 || httpCode == 410
+    /** Courier / bulk printing (Orders, Shipping, bulk) isn't unlocked for this shop: 402 PRINT_LOCKED. */
+    val printLocked: Boolean get() = httpCode == 402 && code == "PRINT_LOCKED"
 }
 
 data class PendingJobsResult(
@@ -250,7 +256,7 @@ class ApiClient(
         response.use { resp ->
             listener.onReachability(true)
             if (resp.code == 401 || resp.code == 403) listener.onUnauthorized()
-            if (!resp.isSuccessful) throw ApiException(resp.code, serverError(resp.body?.string()) ?: "HTTP ${resp.code}")
+            if (!resp.isSuccessful) throw serverFailure(resp.code, resp.body?.string(), "HTTP ${resp.code}")
             val bytes = resp.body?.bytes() ?: throw ApiException(resp.code, "Empty image")
             if (bytes.size > com.sopifo.printagent.print.PrintDataBuilder.MAX_DOWNLOAD_BYTES) {
                 throw ApiException(resp.code, "Image too large: ${bytes.size} bytes")
@@ -259,12 +265,24 @@ class ApiClient(
         }
     }
 
-    /** The backend's `{ "error": "…" }` message, for errors the seller can act on. */
-    private fun serverError(text: String?): String? = try {
-        ((text?.let { json.parseToJsonElement(it) } as? JsonObject)?.get("error") as? JsonPrimitive)
-            ?.takeIf { it.isString }?.content?.take(200)
-    } catch (_: Exception) {
-        null
+    /**
+     * A failed answer as [ApiException]: the backend's `{ "error": "…" }` message (for errors the
+     * seller can act on), plus `code` and `unlock_url` when a paid feature is locked.
+     */
+    private fun serverFailure(httpCode: Int, text: String?, fallback: String): ApiException {
+        val body = try {
+            text?.let { json.parseToJsonElement(it) } as? JsonObject
+        } catch (_: Exception) {
+            null
+        }
+        fun field(name: String, max: Int) =
+            (body?.get(name) as? JsonPrimitive)?.takeIf { it.isString }?.content?.take(max)
+        return ApiException(
+            httpCode,
+            field("error", 300) ?: fallback,
+            code = field("code", 40),
+            unlockUrl = field("unlock_url", 500),
+        )
     }
 
     private fun base(): HttpUrl {
@@ -301,7 +319,7 @@ class ApiClient(
             val text = resp.body?.string().orEmpty()
             if (resp.code == 401 || resp.code == 403) listener.onUnauthorized()
             if (!resp.isSuccessful) {
-                throw ApiException(resp.code, serverError(text) ?: "HTTP ${resp.code} for ${request.url.encodedPath}")
+                throw serverFailure(resp.code, text, "HTTP ${resp.code} for ${request.url.encodedPath}")
             }
             if (text.isBlank()) return@withContext JsonObject(emptyMap())
             try {

@@ -51,6 +51,7 @@ fun OrdersScreen(vm: OrdersViewModel, snackbar: SnackbarHostState) {
         message?.let { snackbar.showSnackbar(it); vm.consumeMessage() }
     }
     val page = state.page
+    val baseUrl = rememberServerBaseUrl()
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -76,6 +77,7 @@ fun OrdersScreen(vm: OrdersViewModel, snackbar: SnackbarHostState) {
 
         PullToRefreshBox(isRefreshing = state.loading, onRefresh = { vm.reload() }, modifier = Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.locked?.let { lock -> item { LockedCard(lock, baseUrl) } }
                 state.error?.let { err -> item { ErrorCard(err) { vm.reload() } } }
                 if (page != null && page.orders.isNotEmpty()) {
                     item {

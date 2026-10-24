@@ -54,6 +54,13 @@ object AppIcons {
     /** Material "bolt", for Quick print. */
     val Bolt: ImageVector by lazy { filled("Bolt", "M11,21h-1l1,-7H7.5c-0.58,0 -0.57,-0.32 -0.38,-0.66 0.19,-0.34 0.05,-0.08 0.07,-0.12C8.48,10.94 10.42,7.54 13,3h1l-1,7h3.5c0.49,0 0.56,0.33 0.47,0.51l-0.07,0.15C12.96,17.55 11,21 11,21z") }
 
+    /** Material "dashboard", for the Sopifo dashboard (app.sopifo.com) inside the app. */
+    val Dashboard: ImageVector by lazy { filled("Dashboard", "M3,13h8V3H3v10zM3,21h8v-6H3v6zM13,21h8V11h-8v10zM13,3v6h8V3h-8z") }
+
+    /** Material "open_in_new", for "Open in Chrome". */
+    val OpenInNew: ImageVector by lazy { filled("OpenInNew", "M19,19H5V5h7V3H5c-1.11,0 -2,0.9 -2,2v14c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2v-7h-2v7z" +
+        "M14,3v2h3.59l-9.83,9.83 1.41,1.41L19,6.41V10h2V3h-7z") }
+
     private fun filled(name: String, path: String): ImageVector =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
             .addPath(addPathNodes(path), fill = SolidColor(Color.Black))

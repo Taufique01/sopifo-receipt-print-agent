@@ -8,6 +8,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
@@ -93,6 +94,28 @@ class AppUiTest {
             compose.onNodeWithTag("token_input").performTextInput("not/a valid;code")
             compose.onNodeWithTag("register_button").performClick()
             compose.onNodeWithTag("registration_error").assertIsDisplayed()
+        }
+    }
+
+    @Test fun registrationScreenShowsLogoAndQuietWebsiteLinks() {
+        launch().use {
+            compose.onNodeWithTag("sopifo_logo").assertIsDisplayed()
+            compose.onNodeWithTag("open_cloud_print").assertIsDisplayed()
+            compose.onNodeWithTag("printer_help").assertIsDisplayed()
+        }
+    }
+
+    @Test fun registeredDeviceShowsDashboardButtonCloudPrintAndDashboardLinks() {
+        runBlocking { container.device.register(RegistrationCode("ui-test-token", "http://localhost:${server.port}")) }
+        launch().use {
+            compose.waitUntil(10_000) { compose.onAllNodes(hasText("UI Test Store")).fetchSemanticsNodes().isNotEmpty() }
+            // The dashboard icon replaced the "i" help icon in the top bar.
+            compose.onNodeWithTag("dashboard_button").assertIsDisplayed()
+            compose.onNodeWithTag("help_button").assertDoesNotExist()
+            compose.onNodeWithTag("home_cloud_print").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithTag("tab_more").performClick()
+            compose.onNodeWithTag("dashboard_links").assertIsDisplayed()
+            compose.onNodeWithTag("web_dashboard").assertIsDisplayed()
         }
     }
 

@@ -58,6 +58,7 @@ fun ShippingScreen(vm: ShippingViewModel, snackbar: SnackbarHostState) {
         message?.let { snackbar.showSnackbar(it); vm.consumeMessage() }
     }
     val page = state.page
+    val baseUrl = rememberServerBaseUrl()
     val couriers = listOf("steadfast" to "Steadfast", "pathao" to "Pathao")
 
     Column(Modifier.fillMaxSize()) {
@@ -73,7 +74,7 @@ fun ShippingScreen(vm: ShippingViewModel, snackbar: SnackbarHostState) {
                 Row(Modifier.weight(1f)) {}
                 IconButton(onClick = { vm.reload() }) { Icon(Icons.Filled.Refresh, contentDescription = "Reload") }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (state.locked == null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = vm::sync, enabled = !syncing, modifier = Modifier.testTag("sync_statuses")) {
                     if (syncing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                     Text(if (syncing) " Updating…" else "Sync statuses")
@@ -90,6 +91,7 @@ fun ShippingScreen(vm: ShippingViewModel, snackbar: SnackbarHostState) {
             }
             PullToRefreshBox(isRefreshing = state.loading, onRefresh = { vm.reload() }, modifier = Modifier.weight(1f)) {
                 LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.locked?.let { lock -> item { LockedCard(lock, baseUrl) } }
                     state.error?.let { err -> item { ErrorCard(err) { vm.reload() } } }
                     if (page != null && page.parcels.isNotEmpty()) {
                         item {

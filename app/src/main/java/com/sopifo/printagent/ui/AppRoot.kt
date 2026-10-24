@@ -1,51 +1,35 @@
 package com.sopifo.printagent.ui
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.TextButton
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.sopifo.printagent.SopifoApp
-import com.sopifo.printagent.data.db.PrinterRole
-import com.sopifo.printagent.ui.pages.ActivityViewModel
-import com.sopifo.printagent.ui.pages.LockGate
-import com.sopifo.printagent.ui.pages.MorePage
-import com.sopifo.printagent.ui.pages.MoreScreen
-import com.sopifo.printagent.ui.pages.OrdersScreen
-import com.sopifo.printagent.ui.pages.QuickPrintScreen
-import com.sopifo.printagent.ui.pages.ShippingScreen
-import com.sopifo.printagent.ui.screens.printerStateGood
-import com.sopifo.printagent.ui.theme.StatusBad
-import com.sopifo.printagent.ui.theme.StatusGood
-import com.sopifo.printagent.ui.theme.StatusNeutral
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,13 +39,33 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.sopifo.printagent.SopifoApp
+import com.sopifo.printagent.data.db.PrinterRole
+import com.sopifo.printagent.ui.pages.ActivityViewModel
+import com.sopifo.printagent.ui.pages.LocalOpenDashboard
+import com.sopifo.printagent.ui.pages.LockGate
+import com.sopifo.printagent.ui.pages.MorePage
+import com.sopifo.printagent.ui.pages.MoreScreen
+import com.sopifo.printagent.ui.pages.OrdersScreen
+import com.sopifo.printagent.ui.pages.QuickPrintScreen
+import com.sopifo.printagent.ui.pages.ShippingScreen
+import com.sopifo.printagent.ui.pages.WebLinks
+import com.sopifo.printagent.ui.pages.rememberServerBaseUrl
+import com.sopifo.printagent.ui.screens.DashboardWebScreen
 import com.sopifo.printagent.ui.screens.HelpScreen
 import com.sopifo.printagent.ui.screens.HomeScreen
 import com.sopifo.printagent.ui.screens.RegistrationScreen
+import com.sopifo.printagent.ui.screens.printerStateGood
 import com.sopifo.printagent.ui.theme.AppIcons
+import com.sopifo.printagent.ui.theme.StatusBad
+import com.sopifo.printagent.ui.theme.StatusGood
+import com.sopifo.printagent.ui.theme.StatusNeutral
 
 enum class Tab(val title: String, val icon: ImageVector) {
     HOME("Home", Icons.Filled.Home),
@@ -91,11 +95,11 @@ fun AppRoot(
     }
 }
 
-/** The "i" button that opens the printer setup help page. */
+/** Top-bar button that opens the Sopifo dashboard inside the app (help lives in More). */
 @Composable
-fun HelpButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    IconButton(onClick = onClick, modifier = modifier.testTag("help_button")) {
-        Icon(Icons.Outlined.Info, contentDescription = "Printer setup help")
+private fun DashboardButton(onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.testTag("dashboard_button")) {
+        Icon(AppIcons.Dashboard, contentDescription = "Sopifo dashboard")
     }
 }
 
@@ -130,7 +134,12 @@ private fun MainTabs(
         }
     }
     val locked: @Composable (@Composable () -> Unit) -> Unit = { content -> LockGate(lock, onRepair = vm::unregister, content = content) }
+    // A dashboard page (app.sopifo.com) shown inside the app, over the tabs so they keep their state.
+    var dashboardPath by rememberSaveable { mutableStateOf<String?>(null) }
+    val baseUrl = rememberServerBaseUrl()
 
+    CompositionLocalProvider(LocalOpenDashboard provides { path -> dashboardPath = path }) {
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
@@ -138,7 +147,7 @@ private fun MainTabs(
                 title = { Text("Sopifo Print") },
                 actions = {
                     PrinterStatusChips(vm)
-                    HelpButton(onHelp)
+                    DashboardButton { dashboardPath = WebLinks.DASHBOARD }
                 },
             )
         },
@@ -168,6 +177,11 @@ private fun MainTabs(
                 Tab.MORE -> MoreScreen(vm, activity, lock, onHelp, moreRequest, { moreRequest = null }, locked)
             }
         }
+    }
+    dashboardPath?.let { path ->
+        DashboardWebScreen(url = WebLinks.url(baseUrl, path), onClose = { dashboardPath = null })
+    }
+    }
     }
 }
 

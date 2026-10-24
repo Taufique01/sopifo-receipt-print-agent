@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sopifo.printagent.SopifoApp
+import com.sopifo.printagent.data.api.ApiException
 import com.sopifo.printagent.data.api.DeviceOrderDto
 import com.sopifo.printagent.data.api.DeviceParcelDto
 import com.sopifo.printagent.data.api.OrdersPageDto
@@ -31,6 +32,8 @@ abstract class PrintListViewModel<P>(app: Application) : AndroidViewModel(app) {
         val pageNumber: Int = 1,
         val loading: Boolean = false,
         val error: String? = null,
+        /** Courier & bulk printing isn't unlocked for this shop (402 PRINT_LOCKED): the page shows how to unlock. */
+        val locked: PrintLock? = null,
         /** Selected ids → what the seller sees them as (kept across pages). */
         val selected: Map<String, String> = emptyMap(),
     )
@@ -68,10 +71,14 @@ abstract class PrintListViewModel<P>(app: Application) : AndroidViewModel(app) {
             if (!quiet) _state.update { it.copy(loading = true, error = null) }
             try {
                 val data = fetch(page)
-                _state.update { it.copy(page = data, pageNumber = page, loading = false, error = null) }
+                _state.update { it.copy(page = data, pageNumber = page, loading = false, error = null, locked = null) }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                _state.update { it.copy(loading = false, error = PrintRunner.friendly(e)) }
+                val lock = lockOf(e)
+                _state.update {
+                    if (lock != null) it.copy(loading = false, error = null, locked = lock, page = null, selected = emptyMap())
+                    else it.copy(loading = false, error = PrintRunner.friendly(e))
+                }
             }
         }
     }
@@ -97,6 +104,10 @@ abstract class PrintListViewModel<P>(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    /** The locked state for a PRINT_LOCKED answer, else null. */
+    protected fun lockOf(e: Exception): PrintLock? =
+        (e as? ApiException)?.takeIf { it.printLocked }?.let { PrintLock(it.message ?: "Printing is locked.", it.unlockUrl) }
 
     protected companion object {
         const val RELOAD_AFTER_RUN_MS = 1_500L
@@ -181,7 +192,9 @@ class ShippingViewModel(app: Application) : PrintListViewModel<ParcelsPageDto>(a
                 say(c.api.syncParcels(_courier.value).message.ifBlank { "Statuses updated" })
                 reload(quiet = true)
             } catch (e: Exception) {
-                say("Couldn't update statuses: ${PrintRunner.friendly(e)}")
+                val lock = lockOf(e)
+                if (lock != null) _state.update { it.copy(locked = lock, page = null) }
+                else say("Couldn't update statuses: ${PrintRunner.friendly(e)}")
             } finally {
                 _syncing.value = false
             }

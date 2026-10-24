@@ -114,4 +114,32 @@ class PrintPagesApiTest {
         assertTrue(body.contains("\"reason\":\"Printer not reachable\""))
         assertTrue(body.contains("\"attempt\":2"))
     }
+
+    @Test fun lockedPrintingIsA402WithTheMessageAndUnlockLinkNotASignOut() = runTest {
+        var signedOut = false
+        val locked = ApiClient(
+            baseUrlProvider = { "http://localhost:${server.port}" },
+            tokenProvider = { "device-jwt" },
+            urlPolicy = UrlPolicy(allowLocalhostHttp = true),
+            serverClock = ServerClock(),
+            listener = object : ApiClient.Listener { override fun onUnauthorized() { signedOut = true } },
+        )
+        val body = """{"error":"Courier and bulk printing is locked. Unlock it once for ৳49.","code":"PRINT_LOCKED",
+            "price":49,"unlock_url":"http://localhost:${server.port}/dashboard/print?unlock=1"}"""
+        server.enqueue(MockResponse().setResponseCode(402).setBody(body))
+        server.enqueue(MockResponse().setResponseCode(402).setBody(body))
+
+        for (call in listOf<suspend () -> Unit>({ locked.listParcels("steadfast", "awaiting", 1, 50) }, { locked.renderParcel("p1") })) {
+            try {
+                call()
+                fail("expected PRINT_LOCKED")
+            } catch (e: ApiException) {
+                assertTrue(e.printLocked)
+                assertTrue(e.message!!.startsWith("Courier and bulk printing is locked"))
+                assertEquals("http://localhost:${server.port}/dashboard/print?unlock=1", e.unlockUrl)
+                assertTrue(!e.unauthorized)
+            }
+        }
+        assertTrue("402 must not sign the device out", !signedOut)
+    }
 }
