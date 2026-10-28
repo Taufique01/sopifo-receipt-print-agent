@@ -145,6 +145,8 @@ class PrintAgentService : Service() {
                             container.printers.refreshPassive()
                             if (state == BluetoothAdapter.STATE_ON) {
                                 container.printers.resetProbeBackoff()
+                                // Jobs that arrived while Bluetooth was off are still pending: print them.
+                                if (container.device.hasSession()) container.scheduler.enqueuePendingSync("bluetooth_on", force = true)
                                 container.printers.probeAll()
                             }
                         }

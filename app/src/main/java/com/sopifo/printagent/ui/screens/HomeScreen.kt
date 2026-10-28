@@ -29,6 +29,8 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.ui.AgentViewModel
+import com.sopifo.printagent.ui.pages.WebLinks
+import com.sopifo.printagent.ui.pages.rememberOpenTrusted
 import com.sopifo.printagent.ui.theme.AppIcons
 
 // BatteryLife: an unattended print agent must not be deferred by Doze; see README "Battery exemption".
@@ -41,6 +43,7 @@ fun HomeScreen(vm: AgentViewModel, onRequestPermissions: () -> Unit, onOpenPrint
     val printers by vm.printerStatus.collectAsStateWithLifecycle()
     val battery by vm.battery.collectAsStateWithLifecycle()
     val ignoringOpt by vm.ignoringBatteryOptimizations.collectAsStateWithLifecycle()
+    val openTrusted = rememberOpenTrusted()
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -87,6 +90,12 @@ fun HomeScreen(vm: AgentViewModel, onRequestPermissions: () -> Unit, onOpenPrint
             Icon(AppIcons.Print, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Printers")
+        }
+        // The Sopifo dashboard (orders, settings), the same as the top bar's dashboard icon.
+        OutlinedButton(onClick = { openTrusted(WebLinks.DASHBOARD) }, modifier = Modifier.fillMaxWidth().testTag("home_dashboard")) {
+            Icon(AppIcons.Dashboard, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Open dashboard")
         }
     }
 }

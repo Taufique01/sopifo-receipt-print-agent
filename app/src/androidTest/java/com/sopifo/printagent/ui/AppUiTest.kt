@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollTo
@@ -55,6 +56,11 @@ class AppUiTest {
                 requests += "${request.method} ${request.path}"
                 return when (request.path) {
                     "/api/devices/register" -> MockResponse().setBody("""{"device_id":"dev_ui","device_jwt":"jwt_ui","store_name":"UI Test Store"}""")
+                    // The Connect screen asks for a code and checks it on its own; nobody approves it here.
+                    "/api/device-connect/start" -> MockResponse().setBody(
+                        """{"request_id":"req_ui","code":"K7P4-QXM2","poll_secret":"secret_ui_0123456789","connect_url":"http://localhost/connect-device?code=K7P4-QXM2"}""",
+                    )
+                    "/api/device-connect/claim" -> MockResponse().setResponseCode(202).setBody("""{"status":"pending"}""")
                     // Old enough that the agent itself will not print it, but the backend still lists it.
                     "/api/print-jobs/pending" -> MockResponse().setBody(
                         """[{"id":"job_ui_1","type":"qr_label","status":"pending","image_url":"http://localhost/x.png","created_at":"${Instant.now().minusSeconds(600)}"}]""",
@@ -64,6 +70,7 @@ class AppUiTest {
             }
         }
         server.start()
+        container.device.debugApiBaseUrl = "http://localhost:${server.port}"
         runBlocking { container.unregister() }
     }
 
@@ -88,9 +95,20 @@ class AppUiTest {
         server.shutdown()
     }
 
+    @Test fun connectScreenShowsThePhoneCodeAndWaits() {
+        launch().use {
+            compose.waitUntil(10_000) { compose.onAllNodes(hasText("Phone code: K7P4-QXM2")).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("connect_button").assertIsDisplayed()
+            compose.onNodeWithTag("connect_waiting").assertIsDisplayed()
+            // The pairing code entry is folded away until asked for.
+            compose.onAllNodes(hasTestTag("token_input")).assertCountEquals(0)
+        }
+    }
+
     @Test fun registrationScreenRejectsInvalidCodes() {
         launch().use {
-            compose.onNodeWithTag("scan_qr").assertIsDisplayed()
+            compose.onNodeWithTag("show_code_entry").performScrollTo().performClick()
+            compose.onNodeWithTag("scan_qr").performScrollTo().assertIsDisplayed()
             compose.onNodeWithTag("token_input").performTextInput("not/a valid;code")
             compose.onNodeWithTag("register_button").performClick()
             // The screen scrolls when the keyboard is open: bring the error into view first.
@@ -101,7 +119,8 @@ class AppUiTest {
     @Test fun registrationScreenShowsLogoAndQuietWebsiteLinks() {
         launch().use {
             compose.onNodeWithTag("sopifo_logo").assertIsDisplayed()
-            compose.onNodeWithTag("open_cloud_print").assertIsDisplayed()
+            compose.onNodeWithTag("show_code_entry").performScrollTo().performClick()
+            compose.onNodeWithTag("open_cloud_print").performScrollTo().assertIsDisplayed()
             compose.onNodeWithTag("printer_help").assertIsDisplayed()
             // Google Play: the account deletion page is reachable before pairing.
             compose.onNodeWithTag("delete_account").performScrollTo().assertIsDisplayed()
@@ -114,6 +133,8 @@ class AppUiTest {
             compose.waitUntil(10_000) { compose.onAllNodes(hasText("UI Test Store")).fetchSemanticsNodes().isNotEmpty() }
             // Top right: the dashboard icon (opens app.sopifo.com in Chrome); no Cloud Print on Home.
             compose.onNodeWithTag("dashboard_button").assertIsDisplayed()
+            // Under Printers: the same dashboard, as a button.
+            compose.onNodeWithTag("home_dashboard").performScrollTo().assertIsDisplayed()
             compose.onNodeWithTag("help_button").assertDoesNotExist()
             compose.onNodeWithTag("home_cloud_print").assertDoesNotExist()
             compose.onNodeWithTag("cloud_print_link").assertDoesNotExist()
@@ -121,9 +142,10 @@ class AppUiTest {
             compose.onNodeWithTag("home_printers").performScrollTo().performClick()
             compose.onNodeWithText("Receipt printer").assertIsDisplayed()
             compose.onNodeWithTag("more_back").performClick()
-            // More: Activity, Printers, App lock, Diagnostics, Help; no Sopifo dashboard section.
+            // More: Activity, Printers, Print settings (website), App lock, Diagnostics, Help,
+            // Disconnect; no Sopifo dashboard section.
             compose.onNodeWithTag("dashboard_links").assertDoesNotExist()
-            for (row in listOf("activity", "printers", "lock", "diagnostics", "help", "delete")) {
+            for (row in listOf("activity", "printers", "print_settings", "lock", "diagnostics", "help", "disconnect", "delete")) {
                 compose.onNodeWithTag("more_$row").assertIsDisplayed()
             }
         }

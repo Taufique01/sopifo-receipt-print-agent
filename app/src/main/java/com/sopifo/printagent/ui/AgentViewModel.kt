@@ -3,10 +3,13 @@ package com.sopifo.printagent.ui
 import android.annotation.SuppressLint
 import android.app.Application
 import android.bluetooth.BluetoothManager
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sopifo.printagent.SopifoApp
 import com.sopifo.printagent.core.AppLog
+import com.sopifo.printagent.data.ConnectCode
+import com.sopifo.printagent.data.ConnectPoll
 import com.sopifo.printagent.data.RegistrationCode
 import com.sopifo.printagent.data.RegistrationException
 import com.sopifo.printagent.data.api.PrintJobDto
@@ -18,6 +21,7 @@ import com.sopifo.printagent.print.PrintException
 import com.sopifo.printagent.print.SendSpeed
 import com.sopifo.printagent.service.ServiceController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -25,8 +29,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class BondedDevice(val name: String, val address: String)
+
+/** The Connect screen: the code it shows, and what to tell the seller. */
+data class ConnectState(
+    val code: ConnectCode? = null,
+    /** Getting a code from the server. */
+    val loading: Boolean = false,
+    /** Why there is no code or approval check right now ("No internet — retrying…"). */
+    val error: String? = null,
+    /** Why the phone is on this screen again: removed by the server, or disconnected offline. */
+    val notice: String? = null,
+)
 
 data class PendingJobsState(
     val loading: Boolean = false,
@@ -60,6 +76,9 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
     private val _registrationError = MutableStateFlow<String?>(null)
     val registrationError: StateFlow<String?> = _registrationError.asStateFlow()
 
+    private val _connect = MutableStateFlow(ConnectState())
+    val connect: StateFlow<ConnectState> = _connect.asStateFlow()
+
     private val _message = MutableStateFlow<String?>(null)
     /** One-shot user feedback (snackbar). */
     val message: StateFlow<String?> = _message.asStateFlow()
@@ -80,7 +99,76 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch(Dispatchers.IO) { _registered.value = c.device.hasSession() }
+        // The session can end without this screen asking: the server removed the phone.
+        viewModelScope.launch {
+            c.device.observeConfig().collect { config ->
+                if (config == null && _registered.value == true && !c.device.hasSession()) onSignedOut()
+            }
+        }
         refreshDeviceFacts()
+    }
+
+    private fun onSignedOut() {
+        _registered.value = false
+        c.device.disconnectedFrom()?.let { store ->
+            _connect.update { it.copy(notice = "This phone was disconnected from $store.") }
+        }
+    }
+
+    /**
+     * Runs while the Connect screen is in front: keeps a code and checks whether it was approved,
+     * every 2 s for the first 2 minutes, then every 10 s. Coming back to the app (after approving
+     * in the browser) restarts it, so the first check is immediate.
+     */
+    suspend fun runConnect(): Unit = withContext(Dispatchers.IO) {
+        val started = SystemClock.elapsedRealtime()
+        if (_connect.value.notice == null) {
+            c.device.disconnectedFrom()?.let { store -> _connect.update { it.copy(notice = "This phone was disconnected from $store.") } }
+        }
+        while (true) {
+            val code = _connect.value.code ?: c.device.savedConnectCode()?.also { saved -> _connect.update { it.copy(code = saved) } } ?: fetchConnectCode()
+            if (code != null) {
+                try {
+                    when (c.device.claimConnect(code)) {
+                        ConnectPoll.CONNECTED -> {
+                            _connect.value = ConnectState()
+                            _registered.value = true
+                            c.startAgent("connected")
+                            return@withContext
+                        }
+                        // Replaced or expired: the next round gets a new code.
+                        ConnectPoll.EXPIRED -> _connect.update { if (it.code?.requestId == code.requestId) it.copy(code = null) else it }
+                        ConnectPoll.WAITING -> _connect.update { it.copy(error = null) }
+                    }
+                } catch (e: RegistrationException) {
+                    _connect.update { it.copy(error = e.message) }
+                }
+            }
+            val waited = SystemClock.elapsedRealtime() - started
+            delay(if (waited < CONNECT_FAST_POLL_MS) 2_000 else 10_000)
+        }
+    }
+
+    /** "New code" on the Connect screen. */
+    fun newConnectCode() {
+        if (_connect.value.loading) return
+        viewModelScope.launch { fetchConnectCode() }
+    }
+
+    private suspend fun fetchConnectCode(): ConnectCode? {
+        _connect.update { it.copy(loading = true) }
+        return try {
+            c.device.newConnectCode().also { code -> _connect.update { it.copy(code = code, error = null) } }
+        } catch (e: RegistrationException) {
+            _connect.update { it.copy(error = e.message) }
+            null
+        } catch (e: Exception) {
+            AppLog.e(TAG, "Connect code failed", e)
+            _connect.update { it.copy(error = "Could not get a code: ${e.message}") }
+            null
+        } finally {
+            _connect.update { it.copy(loading = false) }
+        }
     }
 
     fun refreshDeviceFacts() {
@@ -255,15 +343,20 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** More → Disconnect this phone (and re-pairing after a forgotten app lock PIN). */
     fun unregister() {
         viewModelScope.launch(Dispatchers.IO) {
-            c.unregister()
+            val told = c.unregister()
+            _connect.value = ConnectState(
+                notice = if (told) null else "Also remove this phone from your Sopifo dashboard (Cloud Print → Devices).",
+            )
             _registered.value = false
         }
     }
 
     private companion object {
         const val TAG = "UI"
+        const val CONNECT_FAST_POLL_MS = 2 * 60_000L
     }
 }
 

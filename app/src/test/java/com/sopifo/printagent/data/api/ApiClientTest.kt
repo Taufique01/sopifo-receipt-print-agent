@@ -17,6 +17,7 @@ class ApiClientTest {
     private val server = MockWebServer()
     private var reachable: Boolean? = null
     private var unauthorizedCalls = 0
+    private var unauthorizedCode: String? = null
     private lateinit var client: ApiClient
     private lateinit var baseUrl: String
 
@@ -30,7 +31,7 @@ class ApiClientTest {
             serverClock = ServerClock(),
             listener = object : ApiClient.Listener {
                 override fun onReachability(reachable: Boolean) { this@ApiClientTest.reachable = reachable }
-                override fun onUnauthorized() { unauthorizedCalls++ }
+                override fun onUnauthorized(code: String?) { unauthorizedCalls++; unauthorizedCode = code }
             },
         )
     }
@@ -290,5 +291,53 @@ class ApiClientTest {
         c.getPendingJobs()
         assertTrue(clock.hasSample)
         assertEquals("2026-09-30T12:00:00Z", clock.now().toString())
+    }
+
+    @Test fun connectStartAsksForACodeWithoutAuth() = runTest {
+        server.enqueue(MockResponse().setBody(
+            """{"request_id":"req_1","code":"K7P4-QXM2","poll_secret":"sec_0123456789abcdef","connect_url":"https://app.sopifo.com/connect-device?code=K7P4-QXM2","expires_at":"2026-10-29T00:00:00Z"}""",
+        ))
+        val res = client.connectStart(baseUrl, ConnectStartRequest(deviceUuid = "uuid-1", deviceName = "Phone", appVersion = "1.4.0"))
+        assertEquals("K7P4-QXM2", res.code)
+        assertEquals("sec_0123456789abcdef", res.pollSecret)
+        val req = server.takeRequest()
+        assertEquals("/api/device-connect/start", req.path)
+        assertNull(req.getHeader("Authorization"))
+        assertTrue(req.body.readUtf8().contains("\"device_uuid\":\"uuid-1\""))
+    }
+
+    @Test fun connectClaimIsPendingThenConnectedAndExpiredOn410() = runTest {
+        server.enqueue(MockResponse().setResponseCode(202).setBody("""{"status":"pending"}"""))
+        server.enqueue(MockResponse().setBody("""{"status":"connected","device_id":"dev_9","device_jwt":"dev_9.s","store_name":"Corner Shop"}"""))
+        server.enqueue(MockResponse().setResponseCode(410).setBody("""{"status":"expired","error":"This code has expired."}"""))
+        val body = ConnectClaimRequest(requestId = "req_1", pollSecret = "sec")
+
+        assertEquals(ConnectClaim.Pending, client.connectClaim(baseUrl, body))
+        val connected = client.connectClaim(baseUrl, body) as ConnectClaim.Connected
+        assertEquals("dev_9.s", connected.response.deviceJwt)
+        assertEquals("Corner Shop", connected.response.storeName)
+        assertEquals(ConnectClaim.Expired, client.connectClaim(baseUrl, body))
+        assertNull(server.takeRequest().getHeader("Authorization"))
+        assertEquals(0, unauthorizedCalls)
+    }
+
+    @Test fun removedDeviceReportsDeviceRemovedCode() = runTest {
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"This phone was removed from the shop","code":"DEVICE_REMOVED"}"""))
+        try {
+            client.heartbeat(HeartbeatRequest(55, PrinterStatusPayload("connected", "connected"), "1.4", "2026-10-28T00:00:00Z"))
+            fail("expected 401")
+        } catch (e: ApiException) {
+            assertTrue(e.unauthorized)
+        }
+        assertEquals(1, unauthorizedCalls)
+        assertEquals(ApiClient.DEVICE_REMOVED, unauthorizedCode)
+    }
+
+    @Test fun unregisterPostsWithTheDeviceToken() = runTest {
+        server.enqueue(MockResponse().setBody("""{"ok":true}"""))
+        client.unregister()
+        val req = server.takeRequest()
+        assertEquals("/api/devices/unregister", req.path)
+        assertEquals("Bearer device-jwt", req.getHeader("Authorization"))
     }
 }

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -45,7 +44,6 @@ fun DiagnosticsScreen(vm: AgentViewModel) {
     val printers by vm.printerStatus.collectAsStateWithLifecycle()
     val online by vm.cloudOnline.collectAsStateWithLifecycle()
     val ignoringOpt by vm.ignoringBatteryOptimizations.collectAsStateWithLifecycle()
-    var confirmReset by remember { mutableStateOf(false) }
     var sendingLogs by remember { mutableStateOf(false) }
     var sharingLogs by remember { mutableStateOf(false) }
     /** Result of the last "Send logs to support": the reference code, or why it failed. */
@@ -128,16 +126,5 @@ fun DiagnosticsScreen(vm: AgentViewModel) {
                 }
             },
         ) { Text("Share log file (WhatsApp…)") }
-        OutlinedButton(onClick = { confirmReset = true }) { Text("Re-register device", color = MaterialTheme.colorScheme.error) }
-    }
-
-    if (confirmReset) {
-        AlertDialog(
-            onDismissRequest = { confirmReset = false },
-            title = { Text("Re-register this device?") },
-            text = { Text("The stored device session is removed from this phone. Printing stops until it is registered again. Jobs on the server are not affected.") },
-            confirmButton = { TextButton(onClick = { confirmReset = false; vm.unregister() }) { Text("Remove session") } },
-            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Keep") } },
-        )
     }
 }

@@ -122,7 +122,7 @@ class PrintPagesApiTest {
             tokenProvider = { "device-jwt" },
             urlPolicy = UrlPolicy(allowLocalhostHttp = true),
             serverClock = ServerClock(),
-            listener = object : ApiClient.Listener { override fun onUnauthorized() { signedOut = true } },
+            listener = object : ApiClient.Listener { override fun onUnauthorized(code: String?) { signedOut = true } },
         )
         val body = """{"error":"Courier and bulk printing is locked. Unlock it once for ৳49.","code":"PRINT_LOCKED",
             "price":49,"unlock_url":"http://localhost:${server.port}/dashboard/print?unlock=1"}"""

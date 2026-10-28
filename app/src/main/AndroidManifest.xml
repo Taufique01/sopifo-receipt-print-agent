@@ -43,6 +43,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- The connect page's "Open Sopifo Print": only brings the app back; it carries nothing. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sopifo" android:host="connected" />
+            </intent-filter>
         </activity>
 
         <service

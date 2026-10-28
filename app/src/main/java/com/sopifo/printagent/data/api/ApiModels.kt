@@ -24,6 +24,40 @@ data class RegisterResponse(
     @SerialName("device_name") val deviceName: String? = null,
 )
 
+/** "Connect to my shop": ask the server for a code to show and approve in the browser. */
+@Serializable
+data class ConnectStartRequest(
+    @SerialName("device_uuid") val deviceUuid: String,
+    @SerialName("device_name") val deviceName: String,
+    @SerialName("app_version") val appVersion: String,
+)
+
+@Serializable
+data class ConnectStartResponse(
+    @SerialName("request_id") val requestId: String,
+    /** Shown on the Connect screen, e.g. K7P4-QXM2. */
+    val code: String,
+    /** Only this phone knows it: claiming the credentials needs it. */
+    @SerialName("poll_secret") val pollSecret: String,
+    /** The page where the seller signs in and approves the code. */
+    @SerialName("connect_url") val connectUrl: String,
+    @SerialName("expires_at") val expiresAt: String? = null,
+)
+
+@Serializable
+data class ConnectClaimRequest(
+    @SerialName("request_id") val requestId: String,
+    @SerialName("poll_secret") val pollSecret: String,
+    @SerialName("fcm_token") val fcmToken: String? = null,
+)
+
+/** The server's answer to a claim: not approved yet, gone (ask for a new code), or connected. */
+sealed interface ConnectClaim {
+    data object Pending : ConnectClaim
+    data object Expired : ConnectClaim
+    data class Connected(val response: RegisterResponse) : ConnectClaim
+}
+
 @Serializable
 data class PrinterStatusPayload(
     val receipt: String,

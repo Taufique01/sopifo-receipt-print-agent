@@ -12,6 +12,7 @@ import com.sopifo.printagent.print.JobType
 import com.sopifo.printagent.print.PrintData
 import com.sopifo.printagent.print.PrintDataBuilder
 import com.sopifo.printagent.print.PrintException
+import com.sopifo.printagent.print.PrintFailure
 import com.sopifo.printagent.print.PrinterManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -26,7 +27,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Instant
 import java.util.TreeMap
 
-enum class JobOutcome { PRINTED, DUPLICATE, IN_PROGRESS, EXPIRED, NOT_PENDING, NOT_FOUND, INVALID, FAILED }
+enum class JobOutcome {
+    PRINTED, DUPLICATE, IN_PROGRESS, EXPIRED, NOT_PENDING, NOT_FOUND, INVALID, FAILED,
+    /** Bluetooth was off: not reported as failed; it prints if Bluetooth comes on while the job is fresh. */
+    WAITING_BLUETOOTH,
+}
 
 enum class BatchOutcome { DONE, CANCELLED, EXPIRED, STALLED, PRINTER_FAILED, IN_PROGRESS, NOT_FOUND, INVALID, FAILED }
 
@@ -231,6 +236,13 @@ class JobProcessor(
             if (claimed) {
                 // Some bytes may have printed; never retry automatically. A reprint is a new job ID.
                 jobs.markPrinted(job.id)
+            }
+            if (!claimed && fresh() && (e as? PrintException)?.failure == PrintFailure.BLUETOOTH_OFF) {
+                // Nothing printed and the server still has it pending: turning Bluetooth on runs a
+                // pending sync, which prints it while it's under 2 minutes old.
+                AppLog.i(TAG, "Bluetooth off; job waits for it", "job" to job.id)
+                jobs.recordRecent(job.id, type.wireName, RecentJobStatus.FAILED, "Bluetooth is off. Turn it on within 2 minutes to print this.")
+                return JobOutcome.WAITING_BLUETOOTH
             }
             val reason = if (!fresh()) "expired before it could be printed" else "print failed: ${e.message}"
             AppLog.w(TAG, "Print failed", e, "job" to job.id, "claimed" to claimed)

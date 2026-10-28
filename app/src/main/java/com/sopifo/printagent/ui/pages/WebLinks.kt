@@ -46,6 +46,8 @@ import com.sopifo.printagent.ui.theme.AppIcons
 object WebLinks {
     const val DASHBOARD = "dashboard"
     const val CLOUD_PRINT = "dashboard/print"
+    /** Cloud Print opened on its Settings tab: receipt and label layout, paper size. */
+    const val PRINT_SETTINGS = "dashboard/print?tab=settings"
     const val UNLOCK = "dashboard/print?unlock=1"
     const val ORDERS = "dashboard/orders"
     const val COURIERS = "dashboard/couriers"

@@ -66,7 +66,8 @@ class ApiClient(
     interface Listener {
         /** true when the backend answered (any HTTP status), false on network failure. */
         fun onReachability(reachable: Boolean) {}
-        fun onUnauthorized() {}
+        /** 401/403; [code] is the server's reason, e.g. "DEVICE_REMOVED" when the phone was removed. */
+        fun onUnauthorized(code: String?) {}
         companion object { val NONE = object : Listener {} }
     }
 
@@ -92,12 +93,40 @@ class ApiClient(
 
     companion object {
         const val AGENT_FEATURES = "batch"
+        /** 401 code: the seller removed this phone, it disconnected itself, or it was paired again. */
+        const val DEVICE_REMOVED = "DEVICE_REMOVED"
     }
 
     suspend fun register(baseUrl: String, body: RegisterRequest): RegisterResponse {
         val base = urlPolicy.parseAllowed(baseUrl) ?: throw ApiException(null, "Server URL not allowed: $baseUrl")
         val element = execute(post(base, "api/devices/register", json.encodeToString(RegisterRequest.serializer(), body), auth = false))
         return decode(RegisterResponse.serializer(), unwrap(element, "data", "device"))
+    }
+
+    /** "Connect to my shop": a new code for this phone (before it has a session). */
+    suspend fun connectStart(baseUrl: String, body: ConnectStartRequest): ConnectStartResponse {
+        val base = urlPolicy.parseAllowed(baseUrl) ?: throw ApiException(null, "Server URL not allowed: $baseUrl")
+        val element = execute(post(base, "api/device-connect/start", json.encodeToString(ConnectStartRequest.serializer(), body), auth = false))
+        return decode(ConnectStartResponse.serializer(), element)
+    }
+
+    /** Polls a Connect code: 202 pending, 200 the device credentials, 410 expired or replaced. */
+    suspend fun connectClaim(baseUrl: String, body: ConnectClaimRequest): ConnectClaim {
+        val base = urlPolicy.parseAllowed(baseUrl) ?: throw ApiException(null, "Server URL not allowed: $baseUrl")
+        val element = try {
+            execute(post(base, "api/device-connect/claim", json.encodeToString(ConnectClaimRequest.serializer(), body), auth = false))
+        } catch (e: ApiException) {
+            if (e.httpCode == 410) return ConnectClaim.Expired
+            throw e
+        }
+        val status = ((element as? JsonObject)?.get("status") as? JsonPrimitive)?.content
+        if (status == "pending") return ConnectClaim.Pending
+        return ConnectClaim.Connected(decode(RegisterResponse.serializer(), element))
+    }
+
+    /** More → Disconnect this phone: the server forgets this device. */
+    suspend fun unregister() {
+        execute(post(base(), "api/devices/unregister", "{}"))
     }
 
     /** Returns true when support asked for this phone's logs (missed push fallback). */
@@ -257,8 +286,11 @@ class ApiClient(
         val response = await(request)
         response.use { resp ->
             listener.onReachability(true)
-            if (resp.code == 401 || resp.code == 403) listener.onUnauthorized()
-            if (!resp.isSuccessful) throw serverFailure(resp.code, resp.body?.string(), "HTTP ${resp.code}")
+            if (!resp.isSuccessful) {
+                val failure = serverFailure(resp.code, resp.body?.string(), "HTTP ${resp.code}")
+                if (failure.unauthorized) listener.onUnauthorized(failure.code)
+                throw failure
+            }
             val bytes = resp.body?.bytes() ?: throw ApiException(resp.code, "Empty image")
             if (bytes.size > com.sopifo.printagent.print.PrintDataBuilder.MAX_DOWNLOAD_BYTES) {
                 throw ApiException(resp.code, "Image too large: ${bytes.size} bytes")
@@ -320,9 +352,10 @@ class ApiClient(
             listener.onReachability(true)
             serverClock.onServerDate(resp.header("Date"))
             val text = resp.body?.string().orEmpty()
-            if (resp.code == 401 || resp.code == 403) listener.onUnauthorized()
             if (!resp.isSuccessful) {
-                throw serverFailure(resp.code, text, "HTTP ${resp.code} for ${request.url.encodedPath}")
+                val failure = serverFailure(resp.code, text, "HTTP ${resp.code} for ${request.url.encodedPath}")
+                if (failure.unauthorized) listener.onUnauthorized(failure.code)
+                throw failure
             }
             if (text.isBlank()) return@withContext JsonObject(emptyMap())
             try {

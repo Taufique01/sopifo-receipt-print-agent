@@ -34,6 +34,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /** Manual dependency graph; one instance per process, owned by [SopifoApp]. */
@@ -71,8 +73,11 @@ class AppContainer(private val context: Context) {
                     _cloudOnline.value = reachable
                 }
 
-                override fun onUnauthorized() {
-                    scope.launch { device.onUnauthorized() }
+                override fun onUnauthorized(code: String?) {
+                    scope.launch {
+                        device.onUnauthorized()
+                        if (code == ApiClient.DEVICE_REMOVED) unregister(byServer = true)
+                    }
                 }
             },
         )
@@ -182,10 +187,27 @@ class AppContainer(private val context: Context) {
         _cloudOnline.value = false
     }
 
-    suspend fun unregister() {
+    private val sessionLock = Mutex()
+
+    /**
+     * Disconnects this phone and stops the agent; the app returns to its Connect screen.
+     * [byServer]: the server already removed it (401 DEVICE_REMOVED), so it isn't told again and
+     * the Connect screen says which shop it left. Returns false when the server couldn't be told
+     * (offline): the phone then still shows on the dashboard until the seller removes it there.
+     */
+    suspend fun unregister(byServer: Boolean = false): Boolean = sessionLock.withLock {
+        // A request racing the disconnect can report DEVICE_REMOVED after the session is gone.
+        if (byServer && !device.hasSession()) return@withLock true
+        val storeName = device.config()?.storeName
+        val told = byServer || !device.hasSession() || device.tellServerUnregister()
+        if (byServer) {
+            AppLog.w("AppContainer", "Server removed this device; back to Connect", null)
+            device.setDisconnectedFrom(storeName?.ifBlank { null } ?: "your shop")
+        }
         appLock.clear()
         scheduler.cancelAll()
         ServiceController.stop(context)
         device.unregister()
+        told
     }
 }

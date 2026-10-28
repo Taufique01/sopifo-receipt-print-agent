@@ -233,6 +233,13 @@ class PrinterManager(
     /** Link-level event from the system (ACL connected/disconnected) for a configured printer. */
     suspend fun onLinkEvent(macAddress: String, connected: Boolean) {
         val printer = printerDao.getAll().firstOrNull { it.macAddress.equals(macAddress, ignoreCase = true) } ?: return
+        if (!connected) {
+            // Closing our own connection after a print or probe drops the link a few seconds
+            // later; that's not the printer going away. A drop mid-job fails the write instead.
+            if (lockFor(printer).isLocked) return
+            val closedAt = lastClosed[printer.macAddress.uppercase()]
+            if (closedAt != null && clock() - closedAt < OWN_CLOSE_GRACE_MS) return
+        }
         setStatus(printer, if (connected) PrinterState.CONNECTED else PrinterState.DISCONNECTED)
     }
 
@@ -285,5 +292,7 @@ class PrinterManager(
         const val PROBE_BACKOFF_MAX_MS = 15 * 60_000L
         const val PROBE_SLACK_MS = 60_000L
         const val RECONNECT_GAP_MS = 2_000L
+        /** How long after our own close a link-down event is taken as that close, not the printer leaving. */
+        const val OWN_CLOSE_GRACE_MS = 10_000L
     }
 }
