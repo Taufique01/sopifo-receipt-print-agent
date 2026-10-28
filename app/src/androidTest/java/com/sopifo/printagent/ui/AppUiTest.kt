@@ -58,7 +58,7 @@ class AppUiTest {
                     "/api/devices/register" -> MockResponse().setBody("""{"device_id":"dev_ui","device_jwt":"jwt_ui","store_name":"UI Test Store"}""")
                     // The Connect screen asks for a code and checks it on its own; nobody approves it here.
                     "/api/device-connect/start" -> MockResponse().setBody(
-                        """{"request_id":"req_ui","code":"K7P4-QXM2","poll_secret":"secret_ui_0123456789","connect_url":"http://localhost/connect-device?code=K7P4-QXM2"}""",
+                        """{"request_id":"req_ui","code":"cow milk","poll_secret":"secret_ui_0123456789","connect_url":"http://localhost/connect-device?code=cow-milk"}""",
                     )
                     "/api/device-connect/claim" -> MockResponse().setResponseCode(202).setBody("""{"status":"pending"}""")
                     // Old enough that the agent itself will not print it, but the backend still lists it.
@@ -97,7 +97,7 @@ class AppUiTest {
 
     @Test fun connectScreenShowsThePhoneCodeAndWaits() {
         launch().use {
-            compose.waitUntil(10_000) { compose.onAllNodes(hasText("Phone code: K7P4-QXM2")).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) { compose.onAllNodes(hasText("Phone code: cow milk")).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("connect_button").assertIsDisplayed()
             compose.onNodeWithTag("connect_waiting").assertIsDisplayed()
             // The pairing code entry is folded away until asked for.

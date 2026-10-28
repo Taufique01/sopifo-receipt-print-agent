@@ -104,7 +104,7 @@ fun RegistrationScreen(vm: AgentViewModel, onHelp: () -> Unit) {
                 }
             }
             Text(
-                "Connect this phone to your shop. You'll sign in to Sopifo and tap Connect.",
+                "Connect this phone to your shop: sign in to Sopifo, then tap Yes, connect.",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
             )

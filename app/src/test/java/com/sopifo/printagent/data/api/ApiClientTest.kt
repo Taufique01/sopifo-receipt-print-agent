@@ -295,10 +295,10 @@ class ApiClientTest {
 
     @Test fun connectStartAsksForACodeWithoutAuth() = runTest {
         server.enqueue(MockResponse().setBody(
-            """{"request_id":"req_1","code":"K7P4-QXM2","poll_secret":"sec_0123456789abcdef","connect_url":"https://app.sopifo.com/connect-device?code=K7P4-QXM2","expires_at":"2026-10-29T00:00:00Z"}""",
+            """{"request_id":"req_1","code":"cow milk","poll_secret":"sec_0123456789abcdef","connect_url":"https://app.sopifo.com/connect-device?code=cow-milk","expires_at":"2026-10-29T00:00:00Z"}""",
         ))
         val res = client.connectStart(baseUrl, ConnectStartRequest(deviceUuid = "uuid-1", deviceName = "Phone", appVersion = "1.4.0"))
-        assertEquals("K7P4-QXM2", res.code)
+        assertEquals("cow milk", res.code)
         assertEquals("sec_0123456789abcdef", res.pollSecret)
         val req = server.takeRequest()
         assertEquals("/api/device-connect/start", req.path)

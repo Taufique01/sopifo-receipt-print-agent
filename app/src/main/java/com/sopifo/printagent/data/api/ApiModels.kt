@@ -35,7 +35,7 @@ data class ConnectStartRequest(
 @Serializable
 data class ConnectStartResponse(
     @SerialName("request_id") val requestId: String,
-    /** Shown on the Connect screen, e.g. K7P4-QXM2. */
+    /** Shown on the Connect screen, e.g. "cow milk" (two words; first 1.4.0 codes looked like K7P4-QXM2). */
     val code: String,
     /** Only this phone knows it: claiming the credentials needs it. */
     @SerialName("poll_secret") val pollSecret: String,
