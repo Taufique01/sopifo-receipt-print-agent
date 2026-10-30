@@ -40,6 +40,10 @@ data class QuickPrintState(
     val pdfPages: Int = 0,
     val pageFrom: Int = 1,
     val pageTo: Int = 1,
+    /** PDF: cut the page's white margins so the content fills the paper. */
+    val pdfTrim: Boolean = true,
+    /** PDF on a label: the whole page (Fit) or edge to edge (Fill). */
+    val pdfFit: ImageFit = ImageFit.FIT,
     /** Used when the chosen printer is a label (TSPL) printer. */
     val labelSize: QuickLabelSize = QuickLabelSize.S50X30,
     val copies: Int = 1,
@@ -122,7 +126,7 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
             QuickMode.IMAGE -> s.imageUri?.let { listOf(renderer.image(it, target, s.imageFit, s.imageZoom)) } ?: emptyList()
             QuickMode.PDF -> s.pdfUri?.let {
                 val to = if (firstOnly) s.pageFrom else s.pageTo
-                renderer.pdfPages(it, s.pageFrom, to, target)
+                renderer.pdfPages(it, s.pageFrom, to, target, s.pdfTrim, s.pdfFit)
             } ?: emptyList()
         }
     }

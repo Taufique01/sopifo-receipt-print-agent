@@ -134,6 +134,33 @@ fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
                         Text("${s.pdfPages} page${if (s.pdfPages == 1) "" else "s"} · up to ${QuickPrintViewModel.MAX_PDF_PAGES} at a time", style = MaterialTheme.typography.bodySmall)
                         Stepper("From page", s.pageFrom, 1, s.pageTo) { v -> vm.update { it.copy(pageFrom = v) } }
                         Stepper("To page", s.pageTo, s.pageFrom, minOf(s.pdfPages, s.pageFrom + QuickPrintViewModel.MAX_PDF_PAGES - 1)) { v -> vm.update { it.copy(pageTo = v) } }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Trim white margins", Modifier.weight(1f))
+                            Switch(
+                                checked = s.pdfTrim,
+                                onCheckedChange = { on -> vm.update { it.copy(pdfTrim = on) } },
+                                modifier = Modifier.testTag("pdf_trim"),
+                            )
+                        }
+                        if (s.printerIsLabel) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                ImageFit.entries.forEach { fit ->
+                                    FilterChip(
+                                        selected = s.pdfFit == fit,
+                                        onClick = { vm.update { it.copy(pdfFit = fit) } },
+                                        label = { Text(fit.title) },
+                                        modifier = Modifier.testTag("pdf_fit_${fit.name.lowercase()}"),
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            when {
+                                s.printerIsLabel -> "Trim cuts the page's empty border. Fit shows the whole page on the label; Fill covers the label edge to edge and cuts what's left over."
+                                else -> "Trim cuts the page's empty border so the content fills the paper's width."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }

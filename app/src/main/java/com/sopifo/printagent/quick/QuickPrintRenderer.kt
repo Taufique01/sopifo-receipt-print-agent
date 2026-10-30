@@ -74,17 +74,56 @@ class QuickPrintRenderer(private val context: Context) {
 
     fun pdfPageCount(uri: Uri): Int = openPdf(uri) { it.pageCount }
 
-    /** Pages [from]..[to] (1-based, inclusive), each the paper's width. */
-    fun pdfPages(uri: Uri, from: Int, to: Int, target: QuickTarget): List<Bitmap> = openPdf(uri) { pdf ->
+    /**
+     * Pages [from]..[to] (1-based, inclusive), each the paper's width. [trim] cuts the page's white
+     * margins first, so a small label on an A4 page prints big; on a label, [fit] shows the whole
+     * page (Fit) or covers the label edge to edge (Fill).
+     */
+    fun pdfPages(
+        uri: Uri,
+        from: Int,
+        to: Int,
+        target: QuickTarget,
+        trim: Boolean = true,
+        fit: ImageFit = ImageFit.FIT,
+    ): List<Bitmap> = openPdf(uri) { pdf ->
         (from.coerceAtLeast(1)..to.coerceAtMost(pdf.pageCount)).map { n ->
             pdf.openPage(n - 1).use { page ->
-                val scale = target.widthDots.toFloat() / page.width
-                val bmp = createBitmap(target.widthDots, max(1, (page.height * scale).roundToInt()))
+                // Drawn sharper when trimming: the content that's left is scaled up to the paper.
+                val scale = target.widthDots * (if (trim) TRIM_DETAIL else 1f) / page.width
+                val bmp = createBitmap(max(1, (page.width * scale).roundToInt()), max(1, (page.height * scale).roundToInt()))
                 bmp.eraseColor(Color.WHITE)
                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
-                fitToTarget(bmp, target)
+                val content = if (trim) trimmed(bmp) else bmp
+                if (target.isLabel) placeOnLabel(content, target, fit) else fitToTarget(content, target)
             }
         }
+    }
+
+    /** [src] cut to its ink; the page itself when it's blank. */
+    private fun trimmed(src: Bitmap): Bitmap {
+        val pixels = IntArray(src.width * src.height)
+        src.getPixels(pixels, 0, src.width, 0, 0, src.width, src.height)
+        val box = ContentBounds.find(pixels, src.width, src.height) ?: return src
+        if (box.width == src.width && box.height == src.height) return src
+        val out = Bitmap.createBitmap(src, box.left, box.top, box.width, box.height)
+        src.recycle()
+        return out
+    }
+
+    /** A page on a label: Fit inside a small margin, or Fill edge to edge (the overflow is cut). */
+    private fun placeOnLabel(src: Bitmap, target: QuickTarget, fit: ImageFit): Bitmap {
+        val w = target.widthDots
+        val h = target.heightDots!!
+        val margin = if (fit == ImageFit.FIT) (min(w, h) * 0.04f).roundToInt() else 0
+        val place = ImagePlacement.plan(src.width, src.height, w, h, fit, 1f, margin)
+        val out = createBitmap(w, h)
+        Canvas(out).apply {
+            drawColor(Color.WHITE)
+            drawBitmap(src, null, Rect(place.left, place.top, place.left + place.width, place.top + place.height), Paint(Paint.FILTER_BITMAP_FLAG))
+        }
+        src.recycle()
+        return out
     }
 
     /** Saves a bitmap for the print run (it reads the file when its turn comes). */
@@ -143,5 +182,7 @@ class QuickPrintRenderer(private val context: Context) {
         const val DAY_MS = 24L * 60 * 60 * 1000
         /** Longest roll print from one image (1.5 m at 8 dots/mm). */
         const val MAX_ROLL_HEIGHT = 12000
+        /** PDF pages are drawn this many times the paper's width before trimming. */
+        const val TRIM_DETAIL = 2f
     }
 }
