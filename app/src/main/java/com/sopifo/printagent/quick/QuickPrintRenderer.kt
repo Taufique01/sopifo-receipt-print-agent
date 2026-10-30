@@ -89,15 +89,34 @@ class QuickPrintRenderer(private val context: Context) {
     ): List<Bitmap> = openPdf(uri) { pdf ->
         (from.coerceAtLeast(1)..to.coerceAtMost(pdf.pageCount)).map { n ->
             pdf.openPage(n - 1).use { page ->
-                // Drawn sharper when trimming: the content that's left is scaled up to the paper.
-                val scale = target.widthDots * (if (trim) TRIM_DETAIL else 1f) / page.width
+                // Drawn sharper than the paper, then shrunk dot by dot (InkDownscale) so thin text
+                // isn't lost to grey; the pixel budget keeps a 4 × 6 in label within memory.
+                var scale = target.widthDots * PDF_DETAIL / page.width
+                val pixels = page.width * scale * page.height * scale
+                if (pixels > MAX_PDF_RENDER_PIXELS) scale *= kotlin.math.sqrt(MAX_PDF_RENDER_PIXELS / pixels)
                 val bmp = createBitmap(max(1, (page.width * scale).roundToInt()), max(1, (page.height * scale).roundToInt()))
                 bmp.eraseColor(Color.WHITE)
                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                 val content = if (trim) trimmed(bmp) else bmp
-                if (target.isLabel) placeOnLabel(content, target, fit) else fitToTarget(content, target)
+                if (target.isLabel) placeOnLabel(content, target, fit) else onRoll(content, target)
             }
         }
+    }
+
+    /** A page the roll's width, as tall as it needs (up to the longest roll print). */
+    private fun onRoll(src: Bitmap, target: QuickTarget): Bitmap {
+        val w = target.widthDots
+        val h = min(MAX_ROLL_HEIGHT, max(1, (src.height * w.toFloat() / src.width).roundToInt()))
+        return inked(src, w, h)
+    }
+
+    /** [src] shrunk (or grown) to [w] × [h] in pure black and white; [src] is recycled. */
+    private fun inked(src: Bitmap, w: Int, h: Int): Bitmap {
+        val pixels = IntArray(src.width * src.height)
+        src.getPixels(pixels, 0, src.width, 0, 0, src.width, src.height)
+        val out = InkDownscale.downscale(pixels, src.width, src.height, w, h)
+        src.recycle()
+        return Bitmap.createBitmap(out, w, h, Bitmap.Config.ARGB_8888)
     }
 
     /** [src] cut to its ink; the page itself when it's blank. */
@@ -117,12 +136,13 @@ class QuickPrintRenderer(private val context: Context) {
         val h = target.heightDots!!
         val margin = if (fit == ImageFit.FIT) (min(w, h) * 0.04f).roundToInt() else 0
         val place = ImagePlacement.plan(src.width, src.height, w, h, fit, 1f, margin)
+        val ink = inked(src, place.width, place.height)
         val out = createBitmap(w, h)
         Canvas(out).apply {
             drawColor(Color.WHITE)
-            drawBitmap(src, null, Rect(place.left, place.top, place.left + place.width, place.top + place.height), Paint(Paint.FILTER_BITMAP_FLAG))
+            drawBitmap(ink, place.left.toFloat(), place.top.toFloat(), null)
         }
-        src.recycle()
+        ink.recycle()
         return out
     }
 
@@ -182,7 +202,8 @@ class QuickPrintRenderer(private val context: Context) {
         const val DAY_MS = 24L * 60 * 60 * 1000
         /** Longest roll print from one image (1.5 m at 8 dots/mm). */
         const val MAX_ROLL_HEIGHT = 12000
-        /** PDF pages are drawn this many times the paper's width before trimming. */
-        const val TRIM_DETAIL = 2f
+        /** PDF pages are drawn this many times the paper's width, then shrunk with InkDownscale. */
+        const val PDF_DETAIL = 3f
+        const val MAX_PDF_RENDER_PIXELS = 6_000_000f
     }
 }
