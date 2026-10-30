@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import com.sopifo.printagent.core.AppLog
 import com.sopifo.printagent.data.db.PrinterConfigEntity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -101,7 +102,14 @@ class BluetoothPrinterTransport(
     }
 
     private class BluetoothConnection(private val socket: BluetoothSocket, private val speedKbps: Int) : PrinterConnection {
+        private var settled = false
+
         override suspend fun write(data: ByteArray) {
+            // Many printers aren't ready the instant the link comes up and drop the first bytes.
+            if (!settled) {
+                delay(CONNECT_SETTLE_MS)
+                settled = true
+            }
             // The whole send runs on one thread, paced with sleeps, under one hard time limit: a
             // write that never returns fails the print and frees the printer instead of holding it.
             try {
@@ -139,6 +147,8 @@ class BluetoothPrinterTransport(
             runCatching { socket.close() }
         }
         val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+        /** Wait between the Bluetooth link coming up and the first byte sent. */
+        const val CONNECT_SETTLE_MS = 300L
         fun drainDelayMs(bytes: Int): Long = (300L + bytes / 20).coerceAtMost(4_000L)
     }
 }

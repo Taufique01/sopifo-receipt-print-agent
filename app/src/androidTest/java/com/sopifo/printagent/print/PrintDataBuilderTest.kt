@@ -40,8 +40,8 @@ class PrintDataBuilderTest {
     @Test fun receiptPngIsEncodedAtNativeWidth() {
         val bytes = builder.fromPng(testPng(576, 100), receipt, copies = 1).bytes
         assertEquals(72 to 100, rasterHeader(bytes))
-        // First data byte (after ESC @, ESC a 1 and the GS v 0 header): left half black.
-        assertEquals(0xFF, bytes[13].toInt() and 0xFF)
+        // First data byte (after the NUL padding, ESC @, ESC a 1 and the GS v 0 header): left half black.
+        assertEquals(0xFF, bytes[EscPosEncoder.SYNC_PADDING + 13].toInt() and 0xFF)
     }
 
     @Test fun widerImagesAreScaledDownToPaperWidth() {
@@ -64,14 +64,14 @@ class PrintDataBuilderTest {
 
     @Test fun labelPngIsEncodedAsTspl() {
         val text = String(builder.fromPng(testPng(400, 240), label, copies = 1).bytes, Charsets.ISO_8859_1)
-        assertTrue(text.startsWith("SIZE 50 mm,30 mm"))
+        assertTrue(text.startsWith(TsplEncoder.TSPL_SYNC_PADDING + "SIZE 50 mm,30 mm"))
         assertTrue(text.contains("BITMAP 0,0,50,240,0,"))
     }
 
     @Test fun labelSizeComesFromImageNotPrinterConfig() {
         // Dashboard 100×150 mm label on a printer whose (legacy) config says 50×30.
         val text = String(builder.fromPng(testPng(800, 1200), label, copies = 1).bytes, Charsets.ISO_8859_1)
-        assertTrue(text.startsWith("SIZE 100 mm,150 mm"))
+        assertTrue(text.startsWith(TsplEncoder.TSPL_SYNC_PADDING + "SIZE 100 mm,150 mm"))
         assertTrue(text.contains("BITMAP 0,0,100,1200,0,"))
     }
 

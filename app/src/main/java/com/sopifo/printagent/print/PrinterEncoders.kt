@@ -7,13 +7,26 @@ object EscPosEncoder {
     /** Rows per GS v 0 block; small bands keep cheap printers' input buffers from overflowing. */
     const val BAND_HEIGHT = 128
 
+    /**
+     * NULs sent before each copy's commands. Cheap printers drop the first bytes after a
+     * Bluetooth connect (or while cutting); without padding they lose the GS v 0 header and print
+     * the image bytes as text: garbage at the top. ESC/POS ignores NUL, so dropping these is harmless.
+     */
+    const val SYNC_PADDING = 64
+    /** Extra NULs after a cut when more copies follow: time for the cutter before the next image. */
+    const val COPY_GAP_PADDING = 2048
+
     fun encode(image: MonoBitmap, copies: Int = 1, feedLines: Int = 4, cut: Boolean = true): ByteArray {
-        val out = ByteArrayOutputStream(image.data.size + 64)
-        out.write(byteArrayOf(0x1B, 0x40)) // ESC @  initialize
-        // ESC a 1: the printer centres images narrower than its own head (58 mm receipt on an
-        // 80 mm printer). Printers that ignore it print left-aligned; either way nothing is cropped.
-        out.write(byteArrayOf(0x1B, 0x61, 0x01))
-        repeat(copies.coerceIn(1, MAX_COPIES)) {
+        val n = copies.coerceIn(1, MAX_COPIES)
+        val out = ByteArrayOutputStream((image.data.size + 128) * n + COPY_GAP_PADDING * (n - 1))
+        repeat(n) { copy ->
+            if (copy > 0) out.write(ByteArray(COPY_GAP_PADDING))
+            out.write(ByteArray(SYNC_PADDING))
+            // ESC @ (re)initialises, so each copy starts from a known state even after a drop.
+            out.write(byteArrayOf(0x1B, 0x40))
+            // ESC a 1: the printer centres images narrower than its own head (58 mm receipt on an
+            // 80 mm printer). Printers that ignore it print left-aligned; either way nothing is cropped.
+            out.write(byteArrayOf(0x1B, 0x61, 0x01))
             var y = 0
             while (y < image.height) {
                 val rows = minOf(BAND_HEIGHT, image.height - y)
@@ -40,6 +53,8 @@ object TsplEncoder {
     fun encode(image: MonoBitmap, widthMm: Int, heightMm: Int, gapMm: Int, copies: Int = 1, blackMark: Boolean = false): ByteArray {
         val out = ByteArrayOutputStream(image.data.size + 256)
         val header = buildString {
+            // Blank lines first: bytes dropped right after connecting cost these, not SIZE.
+            append(TSPL_SYNC_PADDING)
             append("SIZE $widthMm mm,$heightMm mm\r\n")
             append("${if (blackMark) "BLINE" else "GAP"} ${gapMm.coerceIn(0, MAX_GAP_MM)} mm,0 mm\r\n")
             append("DIRECTION 1\r\n")
@@ -60,6 +75,7 @@ object TsplEncoder {
         "${if (blackMark) "BLINEDETECT" else "GAPDETECT"}\r\n".toByteArray(Charsets.US_ASCII)
 
     const val MAX_GAP_MM = 10
+    const val TSPL_SYNC_PADDING = "\r\n\r\n\r\n\r\n"
 }
 
 const val MAX_COPIES = 10

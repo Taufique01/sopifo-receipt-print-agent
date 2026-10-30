@@ -221,7 +221,7 @@ class JobProcessorTest {
         assertEquals(listOf("r1", "s1", "l1", "b1", "q1"), reporter.completed)
         // Label jobs went out as TSPL, sized by the job image (576 × 120 dots = 72 × 15 mm), not the
         // printer's saved 50 × 30 (the dashboard decides the label size).
-        val labelHeader = String(transport.received[2].second, Charsets.ISO_8859_1).take(60)
+        val labelHeader = String(transport.received[2].second, Charsets.ISO_8859_1).trimStart().take(60)
         assertTrue("TSPL header: $labelHeader", labelHeader.startsWith("SIZE 72 mm,15 mm\r\nGAP 2 mm,0 mm"))
     }
 

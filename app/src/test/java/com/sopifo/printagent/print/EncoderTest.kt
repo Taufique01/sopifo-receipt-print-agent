@@ -45,15 +45,20 @@ class MonoBitmapTest {
 class EscPosEncoderTest {
     private fun solid(width: Int, height: Int) = MonoBitmap(width, height, ByteArray(((width + 7) / 8) * height) { 0xFF.toByte() })
 
+    private val pad = EscPosEncoder.SYNC_PADDING
+    private val init = pad + 5 // NULs, ESC @, ESC a 1
+
     @Test fun headerRasterFeedAndCut() {
         val bytes = EscPosEncoder.encode(solid(16, 2), feedLines = 3, cut = true)
+        // NUL padding absorbs bytes a just-connected printer drops
+        assertTrue(bytes.copyOfRange(0, pad).all { it == 0.toByte() })
         // ESC @, then ESC a 1 (printer centres narrower images)
-        assertArrayEquals(byteArrayOf(0x1B, 0x40, 0x1B, 0x61, 0x01), bytes.copyOfRange(0, 5))
+        assertArrayEquals(byteArrayOf(0x1B, 0x40, 0x1B, 0x61, 0x01), bytes.copyOfRange(pad, init))
         // GS v 0 m xL xH yL yH
-        assertArrayEquals(byteArrayOf(0x1D, 0x76, 0x30, 0x00, 2, 0, 2, 0), bytes.copyOfRange(5, 13))
+        assertArrayEquals(byteArrayOf(0x1D, 0x76, 0x30, 0x00, 2, 0, 2, 0), bytes.copyOfRange(init, init + 8))
         // 4 data bytes, then ESC d 3, then GS V B 0
-        assertArrayEquals(byteArrayOf(0x1B, 0x64, 3, 0x1D, 0x56, 0x42, 0x00), bytes.copyOfRange(17, 24))
-        assertEquals(24, bytes.size)
+        assertArrayEquals(byteArrayOf(0x1B, 0x64, 3, 0x1D, 0x56, 0x42, 0x00), bytes.copyOfRange(init + 12, init + 19))
+        assertEquals(init + 19, bytes.size)
     }
 
     @Test fun tallImagesAreSplitIntoBands() {
@@ -61,14 +66,17 @@ class EscPosEncoderTest {
         val bytes = EscPosEncoder.encode(solid(8, height), cut = false)
         val headers = (0 until bytes.size - 3).count { bytes[it] == 0x1D.toByte() && bytes[it + 1] == 0x76.toByte() && bytes[it + 2] == 0x30.toByte() }
         assertEquals(3, headers)
-        // 5 init + 3*8 headers + data + 3 feed
-        assertEquals(5 + 3 * 8 + height + 3, bytes.size)
+        // padding + init + 3*8 headers + data + 3 feed
+        assertEquals(init + 3 * 8 + height + 3, bytes.size)
     }
 
-    @Test fun copiesAreClamped() {
-        val one = EscPosEncoder.encode(solid(8, 1), copies = 1, cut = false).size
-        val many = EscPosEncoder.encode(solid(8, 1), copies = 999, cut = false).size
-        assertEquals(5 + (one - 5) * MAX_COPIES, many)
+    @Test fun copiesAreClampedAndEachRestartsAfterAGap() {
+        val one = EscPosEncoder.encode(solid(8, 1), copies = 1, cut = true)
+        val many = EscPosEncoder.encode(solid(8, 1), copies = 999, cut = true)
+        assertEquals(one.size * MAX_COPIES + EscPosEncoder.COPY_GAP_PADDING * (MAX_COPIES - 1), many.size)
+        // Copy 2 starts with the gap, its own padding, then ESC @ again.
+        val second = one.size + EscPosEncoder.COPY_GAP_PADDING + pad
+        assertArrayEquals(byteArrayOf(0x1B, 0x40), many.copyOfRange(second, second + 2))
     }
 }
 
@@ -77,7 +85,7 @@ class TsplEncoderTest {
         val mono = MonoBitmap(8, 2, byteArrayOf(0xF0.toByte(), 0x00))
         val bytes = TsplEncoder.encode(mono, widthMm = 50, heightMm = 30, gapMm = 2, copies = 2)
         val text = String(bytes, Charsets.ISO_8859_1)
-        assertTrue(text.startsWith("SIZE 50 mm,30 mm\r\nGAP 2 mm,0 mm\r\n"))
+        assertTrue(text.startsWith(TsplEncoder.TSPL_SYNC_PADDING + "SIZE 50 mm,30 mm\r\nGAP 2 mm,0 mm\r\n"))
         val marker = "BITMAP 0,0,1,2,0,"
         val start = text.indexOf(marker) + marker.length
         assertEquals(0x0F, bytes[start].toInt() and 0xFF)
@@ -88,7 +96,7 @@ class TsplEncoderTest {
     @Test fun blackMarkRollsUseBlineAndContinuousPaperHasNoGap() {
         val mono = MonoBitmap(8, 1, byteArrayOf(0))
         val mark = String(TsplEncoder.encode(mono, widthMm = 50, heightMm = 75, gapMm = 3, blackMark = true), Charsets.ISO_8859_1)
-        assertTrue(mark.startsWith("SIZE 50 mm,75 mm\r\nBLINE 3 mm,0 mm\r\n"))
+        assertTrue(mark.startsWith(TsplEncoder.TSPL_SYNC_PADDING + "SIZE 50 mm,75 mm\r\nBLINE 3 mm,0 mm\r\n"))
         assertFalse(mark.contains("GAP "))
         val continuous = String(TsplEncoder.encode(mono, widthMm = 50, heightMm = 75, gapMm = 0), Charsets.ISO_8859_1)
         assertTrue(continuous.contains("GAP 0 mm,0 mm\r\n"))
