@@ -86,6 +86,8 @@ class QuickPrintRenderer(private val context: Context) {
         target: QuickTarget,
         trim: Boolean = true,
         fit: ImageFit = ImageFit.FIT,
+        darkness: PdfDarkness = PdfDarkness.NORMAL,
+        stretch: PdfStretch = PdfStretch.X1,
     ): List<Bitmap> = openPdf(uri) { pdf ->
         (from.coerceAtLeast(1)..to.coerceAtMost(pdf.pageCount)).map { n ->
             pdf.openPage(n - 1).use { page ->
@@ -98,23 +100,24 @@ class QuickPrintRenderer(private val context: Context) {
                 bmp.eraseColor(Color.WHITE)
                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                 val content = if (trim) trimmed(bmp) else bmp
-                if (target.isLabel) placeOnLabel(content, target, fit) else onRoll(content, target)
+                if (target.isLabel) placeOnLabel(content, target, fit, darkness.cutoff)
+                else onRoll(content, target, darkness.cutoff, stretch.factor)
             }
         }
     }
 
     /** A page the roll's width, as tall as it needs (up to the longest roll print). */
-    private fun onRoll(src: Bitmap, target: QuickTarget): Bitmap {
+    private fun onRoll(src: Bitmap, target: QuickTarget, cutoff: Int, stretch: Float): Bitmap {
         val w = target.widthDots
-        val h = min(MAX_ROLL_HEIGHT, max(1, (src.height * w.toFloat() / src.width).roundToInt()))
-        return inked(src, w, h)
+        val h = min(MAX_ROLL_HEIGHT, max(1, (src.height * w.toFloat() / src.width * stretch).roundToInt()))
+        return inked(src, w, h, cutoff)
     }
 
     /** [src] shrunk (or grown) to [w] × [h] in pure black and white; [src] is recycled. */
-    private fun inked(src: Bitmap, w: Int, h: Int): Bitmap {
+    private fun inked(src: Bitmap, w: Int, h: Int, cutoff: Int): Bitmap {
         val pixels = IntArray(src.width * src.height)
         src.getPixels(pixels, 0, src.width, 0, 0, src.width, src.height)
-        val out = InkDownscale.downscale(pixels, src.width, src.height, w, h)
+        val out = InkDownscale.downscale(pixels, src.width, src.height, w, h, cutoff)
         src.recycle()
         return Bitmap.createBitmap(out, w, h, Bitmap.Config.ARGB_8888)
     }
@@ -131,12 +134,12 @@ class QuickPrintRenderer(private val context: Context) {
     }
 
     /** A page on a label: Fit inside a small margin, or Fill edge to edge (the overflow is cut). */
-    private fun placeOnLabel(src: Bitmap, target: QuickTarget, fit: ImageFit): Bitmap {
+    private fun placeOnLabel(src: Bitmap, target: QuickTarget, fit: ImageFit, cutoff: Int): Bitmap {
         val w = target.widthDots
         val h = target.heightDots!!
         val margin = if (fit == ImageFit.FIT) (min(w, h) * 0.04f).roundToInt() else 0
         val place = ImagePlacement.plan(src.width, src.height, w, h, fit, 1f, margin)
-        val ink = inked(src, place.width, place.height)
+        val ink = inked(src, place.width, place.height, cutoff)
         val out = createBitmap(w, h)
         Canvas(out).apply {
             drawColor(Color.WHITE)

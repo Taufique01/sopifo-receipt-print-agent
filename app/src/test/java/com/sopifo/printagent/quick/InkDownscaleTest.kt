@@ -38,4 +38,17 @@ class InkDownscaleTest {
         assertEquals(black, out[0])
         assertEquals(white, out[1])
     }
+
+    @Test fun paleBackgroundCountsAsPaperEvenOnDarkest() {
+        val tint = IntArray(9) { 0xFFE6E6E6.toInt() } // 230: a tinted box
+        assertEquals(white, InkDownscale.downscale(tint, 3, 3, 1, 1, PdfDarkness.DARKEST.cutoff)[0])
+    }
+
+    @Test fun darkerSettingsKeepFainterInk() {
+        // 2 of 16 pixels black: 12.5% ink (average 223) — white on Normal, black on Darker and Darkest.
+        val src = IntArray(16) { i -> if (i == 5 || i == 10) black else white }
+        assertEquals(white, InkDownscale.downscale(src, 4, 4, 1, 1, PdfDarkness.NORMAL.cutoff)[0])
+        assertEquals(black, InkDownscale.downscale(src, 4, 4, 1, 1, PdfDarkness.DARKER.cutoff)[0])
+        assertEquals(black, InkDownscale.downscale(src, 4, 4, 1, 1, PdfDarkness.DARKEST.cutoff)[0])
+    }
 }

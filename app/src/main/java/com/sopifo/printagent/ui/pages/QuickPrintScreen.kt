@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.quick.ImageFit
+import com.sopifo.printagent.quick.PdfDarkness
+import com.sopifo.printagent.quick.PdfStretch
 import com.sopifo.printagent.quick.ImagePlacement
 import com.sopifo.printagent.quick.QuickLabelSize
 import com.sopifo.printagent.ui.screens.ScreenTitle
@@ -161,6 +163,14 @@ fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
                             },
                             style = MaterialTheme.typography.bodySmall,
                         )
+                        if (!s.printerIsLabel) {
+                            Text("Stretch", style = MaterialTheme.typography.labelLarge)
+                            ChoiceChips(PdfStretch.entries, s.pdfStretch, { it.title }, "pdf_stretch") { v -> vm.update { it.copy(pdfStretch = v) } }
+                            Text("Prints the page taller (letters taller, not wider), so small text is easier to read.", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text("Darkness", style = MaterialTheme.typography.labelLarge)
+                        ChoiceChips(PdfDarkness.entries, s.pdfDarkness, { it.title }, "pdf_darkness") { v -> vm.update { it.copy(pdfDarkness = v) } }
+                        Text("Darker and Darkest keep faint, thin and grey text; use them when parts are missing.", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -197,5 +207,20 @@ private fun Stepper(label: String, value: Int, min: Int, max: Int, onChange: (In
         OutlinedButton(onClick = { onChange((value - 1).coerceAtLeast(min)) }, enabled = value > min) { Text("−") }
         Text("  $value  ", style = MaterialTheme.typography.titleMedium)
         OutlinedButton(onClick = { onChange((value + 1).coerceAtMost(max)) }, enabled = value < max) { Text("+") }
+    }
+}
+
+/** One choice out of [options], as a row of chips. */
+@Composable
+private fun <T : Enum<T>> ChoiceChips(options: List<T>, selected: T, title: (T) -> String, tag: String, onSelect: (T) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.forEach { o ->
+            FilterChip(
+                selected = selected == o,
+                onClick = { onSelect(o) },
+                label = { Text(title(o)) },
+                modifier = Modifier.testTag("${tag}_${o.name.lowercase()}"),
+            )
+        }
     }
 }

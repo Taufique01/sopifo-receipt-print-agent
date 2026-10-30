@@ -10,6 +10,8 @@ import com.sopifo.printagent.data.db.PrinterProtocol
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.print.PrintDataBuilder
 import com.sopifo.printagent.quick.ImageFit
+import com.sopifo.printagent.quick.PdfDarkness
+import com.sopifo.printagent.quick.PdfStretch
 import com.sopifo.printagent.quick.QuickLabelSize
 import com.sopifo.printagent.quick.QuickPrintRenderer
 import com.sopifo.printagent.quick.QuickTarget
@@ -44,6 +46,10 @@ data class QuickPrintState(
     val pdfTrim: Boolean = true,
     /** PDF on a label: the whole page (Fit) or edge to edge (Fill). */
     val pdfFit: ImageFit = ImageFit.FIT,
+    /** PDF: how much ink a dot needs to print black (keep faint text with Darker / Darkest). */
+    val pdfDarkness: PdfDarkness = PdfDarkness.NORMAL,
+    /** PDF on a receipt roll: print the page taller, so small text is easier to read. */
+    val pdfStretch: PdfStretch = PdfStretch.X1,
     /** Used when the chosen printer is a label (TSPL) printer. */
     val labelSize: QuickLabelSize = QuickLabelSize.S50X30,
     val copies: Int = 1,
@@ -126,7 +132,7 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
             QuickMode.IMAGE -> s.imageUri?.let { listOf(renderer.image(it, target, s.imageFit, s.imageZoom)) } ?: emptyList()
             QuickMode.PDF -> s.pdfUri?.let {
                 val to = if (firstOnly) s.pageFrom else s.pageTo
-                renderer.pdfPages(it, s.pageFrom, to, target, s.pdfTrim, s.pdfFit)
+                renderer.pdfPages(it, s.pageFrom, to, target, s.pdfTrim, s.pdfFit, s.pdfDarkness, s.pdfStretch)
             } ?: emptyList()
         }
     }
