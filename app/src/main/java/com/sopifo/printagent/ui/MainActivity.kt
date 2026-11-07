@@ -1,5 +1,9 @@
 package com.sopifo.printagent.ui
 
+import android.net.Uri
+import com.sopifo.printagent.ui.shell.AuthReturn
+import com.sopifo.printagent.ui.shell.SharedFile
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -36,6 +40,7 @@ class MainActivity : FragmentActivity() {
         }
         enableEdgeToEdge()
         openRequest.value = intent?.getStringExtra(EXTRA_OPEN)
+        handleIncoming(intent)
         setContent {
             SopifoTheme {
                 AppRoot(
@@ -52,6 +57,26 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra(EXTRA_OPEN)?.let { openRequest.value = it }
+        handleIncoming(intent)
+    }
+
+    /** sopifo://auth?code=… (Facebook sign-in finished in Chrome) and Share → Sopifo (PDF / image). */
+    private fun handleIncoming(intent: Intent?) {
+        intent ?: return
+        val data = intent.data
+        if (intent.action == Intent.ACTION_VIEW && data?.scheme == "sopifo" && data.host == "auth") {
+            data.getQueryParameter("code")?.takeIf { it.length in 20..8000 }?.let { AuthReturn.code.value = it }
+            return
+        }
+        val shared: Uri? = when (intent.action) {
+            Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            Intent.ACTION_VIEW -> data?.takeIf { it.scheme == "content" || it.scheme == "file" }
+            else -> null
+        }
+        if (shared != null) {
+            val type = intent.type ?: contentResolver.getType(shared).orEmpty()
+            SharedFile.item.value = SharedFile.Item(shared, isPdf = type.contains("pdf") || shared.toString().endsWith(".pdf", ignoreCase = true))
+        }
     }
 
     override fun onResume() {
@@ -62,6 +87,7 @@ class MainActivity : FragmentActivity() {
     fun requestRuntimePermissions() {
         val needed = buildList {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(Manifest.permission.BLUETOOTH_CONNECT)
+            // Language starts in Bangla; the dashboard cookie follows the app's choice.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
         }.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         if (needed.isNotEmpty()) permissionLauncher.launch(needed.toTypedArray())

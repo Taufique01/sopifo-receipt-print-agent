@@ -53,14 +53,24 @@ import com.sopifo.printagent.ui.pages.rememberOpenTrusted
 import com.sopifo.printagent.ui.pages.LockGate
 import com.sopifo.printagent.ui.pages.MorePage
 import com.sopifo.printagent.ui.pages.MoreScreen
-import com.sopifo.printagent.ui.pages.OrdersScreen
 import com.sopifo.printagent.ui.pages.QuickPrintScreen
-import com.sopifo.printagent.ui.pages.ShippingScreen
 import com.sopifo.printagent.ui.pages.WebLinks
 import com.sopifo.printagent.ui.pages.rememberServerBaseUrl
 import com.sopifo.printagent.ui.screens.DashboardWebScreen
 import com.sopifo.printagent.ui.screens.HelpScreen
 import com.sopifo.printagent.ui.screens.HomeScreen
+import com.sopifo.printagent.ui.shell.AppSettings
+import com.sopifo.printagent.ui.shell.AppShell
+import com.sopifo.printagent.ui.shell.FullScreenOverlay
+import com.sopifo.printagent.ui.shell.SharedFile
+import com.sopifo.printagent.ui.shell.StartRoute
+import com.sopifo.printagent.ui.shell.StartScreen
+import com.sopifo.printagent.ui.shell.WebLoginScreen
+import com.sopifo.printagent.ui.shell.WebSession
+import com.sopifo.printagent.ui.print.AddPrinterScreen
+import com.sopifo.printagent.ui.pages.QuickMode
+import com.sopifo.printagent.ui.pages.QuickPrintViewModel
+import androidx.activity.compose.BackHandler
 import com.sopifo.printagent.ui.screens.RegistrationScreen
 import com.sopifo.printagent.ui.screens.printerStateGood
 import com.sopifo.printagent.ui.theme.AppIcons
@@ -68,10 +78,9 @@ import com.sopifo.printagent.ui.theme.StatusBad
 import com.sopifo.printagent.ui.theme.StatusGood
 import com.sopifo.printagent.ui.theme.StatusNeutral
 
+/** Print-station mode (a phone next to the printer): status, Quick print and setup only. */
 enum class Tab(val title: String, val icon: ImageVector) {
     HOME("Home", Icons.Filled.Home),
-    ORDERS("Orders", AppIcons.Receipt),
-    SHIPPING("Shipping", AppIcons.Truck),
     QUICK("Quick", AppIcons.Bolt),
     MORE("More", Icons.Filled.Menu),
 }
@@ -83,16 +92,62 @@ fun AppRoot(
     openRequest: String? = null,
     onOpenHandled: () -> Unit = {},
 ) {
+    val context = LocalContext.current
+    val container = (context.applicationContext as SopifoApp).container
+    val settings = AppSettings.get(context)
     val registered by vm.registered.collectAsStateWithLifecycle()
+    val station by settings.station.collectAsStateWithLifecycle()
+    val config by vm.deviceConfig.collectAsStateWithLifecycle()
+    var loggedIn by rememberSaveable { mutableStateOf(WebSession.isLoggedIn(container)) }
+    var route by rememberSaveable { mutableStateOf<StartRoute?>(null) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
     if (showHelp) {
         HelpScreen(onClose = { showHelp = false })
         return
     }
-    when (registered) {
-        null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        false -> RegistrationScreen(vm, onHelp = { showHelp = true })
-        true -> MainTabs(vm, onRequestPermissions, onHelp = { showHelp = true }, openRequest, onOpenHandled)
+    // Share → Sopifo before logging in: Quick print right away.
+    val shared by SharedFile.item.collectAsStateWithLifecycle()
+    LaunchedEffect(shared) { if (shared != null && !loggedIn) route = StartRoute.QUICK }
+
+    when {
+        registered == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        // Print station: the simple status screen; prints come from everyone in the shop.
+        station && registered == true -> MainTabs(vm, onRequestPermissions, onHelp = { showHelp = true }, openRequest, onOpenHandled)
+        station && route == null -> RegistrationScreen(vm, onHelp = { showHelp = true })
+        loggedIn -> AppShell(vm, onLoggedOut = { loggedIn = false })
+        route == StartRoute.LOGIN || route == StartRoute.SIGNUP -> WebLoginScreen(
+            path = if (route == StartRoute.SIGNUP) "sign-up?redirect_url=%2Fdashboard" else "sign-in?redirect_url=%2Fdashboard",
+            onBack = { route = null },
+            onDone = {
+                route = null
+                loggedIn = true
+            },
+        )
+        route == StartRoute.STATION -> {
+            BackHandler { route = null }
+            LaunchedEffect(Unit) { settings.setStation(true) }
+            RegistrationScreen(vm, onHelp = { showHelp = true })
+        }
+        route == StartRoute.ADD_PRINTER -> {
+            BackHandler { route = null }
+            AddPrinterScreen(onClose = { route = null })
+        }
+        route == StartRoute.QUICK -> FullScreenOverlay(onClose = { route = null; SharedFile.item.value = null }) {
+            val qvm: QuickPrintViewModel = viewModel()
+            val snackbar = remember { SnackbarHostState() }
+            LaunchedEffect(shared) {
+                shared?.let { f -> if (f.isPdf) qvm.pickPdf(f.uri) else qvm.pickImage(f.uri) } ?: qvm.update { it.copy(mode = QuickMode.PDF) }
+            }
+            Box(Modifier.fillMaxSize()) {
+                QuickPrintScreen(qvm, snackbar)
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+            }
+        }
+        else -> StartScreen(
+            connectedStore = if (registered == true) config?.storeName else null,
+            onOpen = { route = it },
+            onOpenStation = { settings.setStation(true) },
+        )
     }
 }
 
@@ -146,10 +201,13 @@ private fun MainTabs(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Text("Sopifo Print") },
+                title = { Text("Sopifo · Print station") },
                 actions = {
                     PrinterStatusChips(vm)
-                    DashboardButton()
+                    // Leave print-station mode: back to the full app.
+                    IconButton(onClick = { AppSettings.get(context).setStation(false) }, modifier = Modifier.testTag("leave_station")) {
+                        Icon(AppIcons.Station, contentDescription = "Leave print station mode")
+                    }
                 },
             )
         },
@@ -173,8 +231,6 @@ private fun MainTabs(
         Box(Modifier.padding(padding)) {
             when (tab) {
                 Tab.HOME -> HomeScreen(vm, onRequestPermissions, onOpenPrinters = { tab = Tab.MORE; moreRequest = MorePage.PRINTERS })
-                Tab.ORDERS -> locked { OrdersScreen(viewModel(), snackbar) }
-                Tab.SHIPPING -> locked { ShippingScreen(viewModel(), snackbar) }
                 Tab.QUICK -> QuickPrintScreen(viewModel(), snackbar)
                 Tab.MORE -> MoreScreen(vm, activity, lock, onHelp, moreRequest, { moreRequest = null }, locked)
             }

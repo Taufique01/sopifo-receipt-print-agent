@@ -136,25 +136,14 @@ data class PrintLock(val message: String, val unlockUrl: String?, val price: Int
  */
 @Composable
 fun LockedCard(lock: PrintLock, baseUrl: String?) {
-    val openDashboard = LocalOpenDashboard.current
+    // No payment links or hints inside the app (Google Play payments policy): what's locked only.
     Card(
         Modifier.fillMaxWidth().testTag("print_locked"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.Lock, contentDescription = null)
-                Text("Pay to use all printing features", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            }
-            Button(
-                onClick = { openDashboard(WebLinks.unlockPath(baseUrl, lock.unlockUrl)) },
-                modifier = Modifier.fillMaxWidth().testTag("unlock_printing"),
-            ) { Text(lock.price?.let { "Pay ৳$it to unlock" } ?: "Pay to unlock printing") }
-            Text(lock.message, style = MaterialTheme.typography.bodyMedium)
-            OutlinedButton(
-                onClick = { openDashboard(WebLinks.ORDERS) },
-                modifier = Modifier.fillMaxWidth().testTag("print_from_dashboard"),
-            ) { Text("Print from dashboard") }
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Filled.Lock, contentDescription = null)
+            Text("Bulk print isn't on your plan", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         }
     }
 }

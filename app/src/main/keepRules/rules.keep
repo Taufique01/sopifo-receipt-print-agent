@@ -19,3 +19,8 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# App 2.0: window.SopifoApp bridge methods are called by name from the website's JavaScript.
+-keepclassmembers class com.sopifo.printagent.ui.shell.SopifoBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}

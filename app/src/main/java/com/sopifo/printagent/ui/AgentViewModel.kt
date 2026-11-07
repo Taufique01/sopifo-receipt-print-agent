@@ -108,6 +108,11 @@ class AgentViewModel(app: Application) : AndroidViewModel(app) {
         refreshDeviceFacts()
     }
 
+    /** App 2.0: the phone was connected by logging in (WebSession.linkDevice). */
+    fun refreshRegistration() {
+        viewModelScope.launch(Dispatchers.IO) { _registered.value = c.device.hasSession() }
+    }
+
     private fun onSignedOut() {
         _registered.value = false
         c.device.disconnectedFrom()?.let { store ->

@@ -10,10 +10,16 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <!-- Bluetooth: legacy permissions up to Android 11, BLUETOOTH_CONNECT from Android 12. No scanning: printers are paired in system settings. -->
+    <!-- Bluetooth: legacy permissions up to Android 11, BLUETOOTH_CONNECT / BLUETOOTH_SCAN from Android 12.
+         App 2.0 finds and pairs printers in the app (scan never used for location). -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" tools:targetApi="31" />
+    <!-- Bluetooth discovery on Android 8–11 needs location permission. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <!-- The dashboard's POS barcode scanner (camera inside the web view). -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -42,6 +48,25 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Facebook sign-in finished in a Chrome tab: hands the sealed session code back. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="sopifo" android:host="auth" />
+            </intent-filter>
+            <!-- Share → Sopifo: print a PDF (a courier label) or a photo. -->
+            <intent-filter android:label="@string/share_print">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter android:label="@string/share_print">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/pdf" />
             </intent-filter>
             <!-- The connect page's "Open Sopifo Print": only brings the app back; it carries nothing. -->
             <intent-filter>
