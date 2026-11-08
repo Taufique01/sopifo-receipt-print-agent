@@ -23,8 +23,8 @@ android {
         applicationId = "com.sopifo.printagent"
         minSdk = 26
         targetSdk = 37
-        versionCode = 18
-        versionName = "2.0.0"
+        versionCode = 19
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
@@ -84,6 +84,9 @@ ksp {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    // Smart shrink: find a courier label's barcode on the phone (offline) and redraw it sharp.
+    implementation(libs.mlkit.barcode.scanning)
+    implementation(libs.zxing.core)
     // Sopifo dashboard as a Trusted Web Activity (full screen, no address bar) with a Custom Tab fallback.
     implementation(libs.androidbrowserhelper)
     implementation(libs.androidx.lifecycle.runtime.ktx)

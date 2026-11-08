@@ -14,6 +14,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
@@ -51,6 +55,18 @@ class PrinterManager(
     private val locks = ConcurrentHashMap<String, Mutex>()
     private fun lockFor(printer: PrinterConfigEntity): Mutex =
         locks.computeIfAbsent(printer.macAddress.uppercase()) { Mutex() }
+
+    /**
+     * Fast printing (app 2.0.1): a printer's link kept open between prints while the seller works
+     * (POS, orders), so a print skips the 1–3 s Bluetooth connect. Closed after [WARM_IDLE_MS]
+     * without a print. Every print path (jobs, bulk, tests) reuses it under the printer's lock.
+     */
+    private class WarmLink(val printer: PrinterConfigEntity, val connection: PrinterConnection) {
+        @Volatile var lastUsed = 0L
+    }
+    private val warm = ConcurrentHashMap<String, WarmLink>()
+    private val warmScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    @Volatile private var idleWatch: Job? = null
 
     /** When each printer's last connection closed (clock ms), for [settle]. */
     private val lastClosed = ConcurrentHashMap<String, Long>()
@@ -103,6 +119,16 @@ class PrinterManager(
         shouldContinue: () -> Boolean = { true },
         block: suspend (PrinterConnection) -> T,
     ): T = lockFor(printer).withLock {
+        warmFor(printer)?.let { link ->
+            try {
+                setStatus(printer, PrinterState.CONNECTED)
+                return@withLock block(link.connection).also { link.lastUsed = clock() }
+            } catch (e: PrintException) {
+                dropWarm(printer)
+                setStatus(printer, PrinterState.DISCONNECTED)
+                throw e
+            }
+        }
         settle(printer)
         val connection = open(printer, attempts, shouldContinue)
         try {
@@ -149,6 +175,11 @@ class PrinterManager(
         if (printer == null) {
             setStatus(role, PrinterState.NOT_CONFIGURED)
             return PrinterState.NOT_CONFIGURED
+        }
+        // A kept-open link: the printer is evidently reachable.
+        if (warmFor(printer) != null) {
+            setStatus(printer, PrinterState.CONNECTED)
+            return PrinterState.CONNECTED
         }
         val lock = lockFor(printer)
         // A job is using the printer right now, so it is evidently reachable; don't queue behind it.
@@ -233,6 +264,10 @@ class PrinterManager(
     /** Link-level event from the system (ACL connected/disconnected) for a configured printer. */
     suspend fun onLinkEvent(macAddress: String, connected: Boolean) {
         val printer = printerDao.getAll().firstOrNull { it.macAddress.equals(macAddress, ignoreCase = true) } ?: return
+        if (!connected && warm.containsKey(printer.macAddress.uppercase()) && !lockFor(printer).isLocked) {
+            // The kept-open link went down (printer off / out of range).
+            dropWarm(printer)
+        }
         if (!connected) {
             // Closing our own connection after a print or probe drops the link a few seconds
             // later; that's not the printer going away. A drop mid-job fails the write instead.
@@ -241,6 +276,105 @@ class PrinterManager(
             if (closedAt != null && clock() - closedAt < OWN_CLOSE_GRACE_MS) return
         }
         setStatus(printer, if (connected) PrinterState.CONNECTED else PrinterState.DISCONNECTED)
+    }
+
+    /** Opens [role]'s printer now and keeps it open, so the next print starts at once. */
+    suspend fun warmUp(role: PrinterRole) {
+        val printer = printerDao.get(role) ?: return
+        if (!environment.isBluetoothOn() || !environment.hasPermission()) return
+        val lock = lockFor(printer)
+        // Busy printing: it's connected anyway.
+        if (!lock.tryLock()) return
+        try {
+            ensureWarm(printer)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.w(TAG, "Warm-up failed", e, "role" to role)
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    /**
+     * Prints [data] over the kept-open link, opening it when needed. When the link had gone stale
+     * and nothing reached the printer, it reconnects once and sends again (never after bytes went out).
+     */
+    suspend fun printFast(printer: PrinterConfigEntity, data: ByteArray) = lockFor(printer).withLock {
+        val first = ensureWarm(printer)
+        try {
+            first.connection.write(data)
+            first.lastUsed = clock()
+        } catch (e: PrintException) {
+            dropWarm(printer)
+            if (e.failure != PrintFailure.CONNECT_FAILED) {
+                setStatus(printer, PrinterState.DISCONNECTED)
+                throw e
+            }
+            val again = ensureWarm(printer)
+            try {
+                again.connection.write(data)
+                again.lastUsed = clock()
+            } catch (e2: PrintException) {
+                dropWarm(printer)
+                setStatus(printer, PrinterState.DISCONNECTED)
+                throw e2
+            }
+        }
+        setStatus(printer, PrinterState.CONNECTED)
+    }
+
+    /** Closes every kept-open link (app going to the background for long, Bluetooth off). */
+    fun coolDown() {
+        warm.values.toList().forEach { dropWarm(it.printer) }
+    }
+
+    private fun warmFor(printer: PrinterConfigEntity): WarmLink? {
+        val link = warm[printer.macAddress.uppercase()] ?: return null
+        // Settings changed (language, speed): the next print opens a fresh link with them.
+        if (link.printer != printer) {
+            dropWarm(link.printer)
+            return null
+        }
+        return link
+    }
+
+    /** Caller holds the printer's lock. */
+    private suspend fun ensureWarm(printer: PrinterConfigEntity): WarmLink {
+        warmFor(printer)?.let { return it }
+        settle(printer)
+        val connection = open(printer, 2) { true }
+        connection.holdOpen(true)
+        val link = WarmLink(printer, connection).also { it.lastUsed = clock() }
+        warm[printer.macAddress.uppercase()] = link
+        setStatus(printer, PrinterState.CONNECTED)
+        watchIdle()
+        return link
+    }
+
+    private fun dropWarm(printer: PrinterConfigEntity) {
+        val link = warm.remove(printer.macAddress.uppercase()) ?: return
+        runCatching { link.connection.close() }
+        closed(printer)
+    }
+
+    private fun watchIdle() {
+        if (idleWatch?.isActive == true) return
+        idleWatch = warmScope.launch {
+            while (warm.isNotEmpty()) {
+                delay(WARM_CHECK_MS)
+                for (link in warm.values.toList()) {
+                    if (clock() - link.lastUsed < WARM_IDLE_MS) continue
+                    val lock = lockFor(link.printer)
+                    if (!lock.tryLock()) continue
+                    try {
+                        dropWarm(link.printer)
+                    } finally {
+                        lock.unlock()
+                    }
+                }
+            }
+        }
     }
 
     suspend fun testPrint(role: PrinterRole) {
@@ -294,5 +428,8 @@ class PrinterManager(
         const val RECONNECT_GAP_MS = 2_000L
         /** How long after our own close a link-down event is taken as that close, not the printer leaving. */
         const val OWN_CLOSE_GRACE_MS = 10_000L
+        /** A kept-open link closes after this long without a print. */
+        const val WARM_IDLE_MS = 3 * 60_000L
+        const val WARM_CHECK_MS = 15_000L
     }
 }

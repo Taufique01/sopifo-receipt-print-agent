@@ -88,6 +88,8 @@ class QuickPrintRenderer(private val context: Context) {
         fit: ImageFit = ImageFit.FIT,
         darkness: PdfDarkness = PdfDarkness.NORMAL,
         stretch: PdfStretch = PdfStretch.X1,
+        /** Smart shrink on labels: barcodes found and redrawn sharp (see SmartShrink). */
+        smart: Boolean = false,
     ): List<Bitmap> = openPdf(uri) { pdf ->
         (from.coerceAtLeast(1)..to.coerceAtMost(pdf.pageCount)).map { n ->
             pdf.openPage(n - 1).use { page ->
@@ -100,7 +102,8 @@ class QuickPrintRenderer(private val context: Context) {
                 bmp.eraseColor(Color.WHITE)
                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                 val content = if (trim) trimmed(bmp) else bmp
-                if (target.isLabel) placeOnLabel(content, target, fit, darkness.cutoff)
+                if (target.isLabel && smart) smartLabel(content, target, fit, darkness.cutoff)
+                else if (target.isLabel) placeOnLabel(content, target, fit, darkness.cutoff)
                 else onRoll(content, target, darkness.cutoff, stretch.factor)
             }
         }
@@ -131,6 +134,28 @@ class QuickPrintRenderer(private val context: Context) {
         val out = Bitmap.createBitmap(src, box.left, box.top, box.width, box.height)
         src.recycle()
         return out
+    }
+
+    /**
+     * Smart shrink of a big drawing (a PDF page, a sample label) onto [target]: trimmed if asked,
+     * barcodes redrawn sharp; the plain shrink when none are found or the check fails.
+     */
+    fun smartFromBitmap(src: Bitmap, target: QuickTarget, trim: Boolean = true, cutoff: Int = PdfDarkness.NORMAL.cutoff): Bitmap {
+        val content = if (trim) trimmed(src) else src
+        return if (target.isLabel) smartLabel(content, target, ImageFit.FIT, cutoff) else onRoll(content, target, cutoff, 1f)
+    }
+
+    private fun smartLabel(src: Bitmap, target: QuickTarget, fit: ImageFit, cutoff: Int): Bitmap {
+        val found = SmartShrink.detect(src)
+        val w = target.widthDots
+        val h = target.heightDots!!
+        val margin = if (fit == ImageFit.FIT) (min(w, h) * 0.04f).roundToInt() else 0
+        val place = ImagePlacement.plan(src.width, src.height, w, h, fit, 1f, margin)
+        val srcWidth = src.width
+        val plain = placeOnLabel(src, target, fit, cutoff)
+        val sharp = SmartShrink.redraw(plain, found, srcWidth, place, max(margin, 4)) ?: return plain
+        plain.recycle()
+        return sharp
     }
 
     /** A page on a label: Fit inside a small margin, or Fill edge to edge (the overflow is cut). */

@@ -52,6 +52,8 @@ data class QuickPrintState(
     val pdfStretch: PdfStretch = PdfStretch.X1,
     /** Used when the chosen printer is a label (TSPL) printer. */
     val labelSize: QuickLabelSize = QuickLabelSize.S50X30,
+    /** Smart shrink: courier label barcodes redrawn sharp on the small label. */
+    val smart: Boolean = true,
     val copies: Int = 1,
     /** The chosen printer is a label (TSPL) printer: it needs a label size. */
     val printerIsLabel: Boolean = false,
@@ -66,7 +68,10 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
     private val c = (app as SopifoApp).container
     private val renderer = QuickPrintRenderer(app)
 
-    private val _state = MutableStateFlow(QuickPrintState())
+    private val _state = MutableStateFlow(
+        // Starts on the label size chosen on the Printers screen.
+        QuickPrintState(labelSize = com.sopifo.printagent.ui.shell.AppSettings.get(app).labelSize.value),
+    )
     val state: StateFlow<QuickPrintState> = _state.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
@@ -132,7 +137,7 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
             QuickMode.IMAGE -> s.imageUri?.let { listOf(renderer.image(it, target, s.imageFit, s.imageZoom)) } ?: emptyList()
             QuickMode.PDF -> s.pdfUri?.let {
                 val to = if (firstOnly) s.pageFrom else s.pageTo
-                renderer.pdfPages(it, s.pageFrom, to, target, s.pdfTrim, s.pdfFit, s.pdfDarkness, s.pdfStretch)
+                renderer.pdfPages(it, s.pageFrom, to, target, s.pdfTrim, s.pdfFit, s.pdfDarkness, s.pdfStretch, smart = s.smart)
             } ?: emptyList()
         }
     }

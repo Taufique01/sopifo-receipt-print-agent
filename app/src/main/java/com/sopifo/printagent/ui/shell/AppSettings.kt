@@ -35,6 +35,18 @@ class AppSettings private constructor(context: Context) {
     private val _testPrinted = MutableStateFlow(prefs.getBoolean(KEY_TEST_OK, false))
     val testPrinted: StateFlow<Boolean> = _testPrinted.asStateFlow()
 
+    /** The label printer's paper (smart shrink, Print → Sopifo, Quick print start here). */
+    private val _labelSize = MutableStateFlow(
+        runCatching { com.sopifo.printagent.quick.QuickLabelSize.valueOf(prefs.getString(KEY_LABEL_SIZE, "S3X2")!!) }
+            .getOrDefault(com.sopifo.printagent.quick.QuickLabelSize.S3X2),
+    )
+    val labelSize: StateFlow<com.sopifo.printagent.quick.QuickLabelSize> = _labelSize.asStateFlow()
+
+    fun setLabelSize(size: com.sopifo.printagent.quick.QuickLabelSize) {
+        prefs.edit { putString(KEY_LABEL_SIZE, size.name) }
+        _labelSize.value = size
+    }
+
     fun setLang(value: String) {
         val v = if (value == "en") "en" else "bn"
         prefs.edit { putString(KEY_LANG, v) }
@@ -72,6 +84,7 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_POS = "selling_pos"
         private const val KEY_COURIERS = "courier_count"
         private const val KEY_TEST_OK = "test_printed"
+        private const val KEY_LABEL_SIZE = "label_size"
 
         @Volatile private var instance: AppSettings? = null
 

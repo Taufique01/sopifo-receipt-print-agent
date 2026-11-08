@@ -8,6 +8,7 @@ import android.webkit.WebView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -51,69 +53,63 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sopifo.printagent.SopifoApp
 import com.sopifo.printagent.ui.pages.WebLinks
-import com.sopifo.printagent.ui.print.Tile
 import com.sopifo.printagent.ui.theme.AppIcons
 import com.sopifo.printagent.ui.theme.StatusGood
 
-enum class StartRoute { LOGIN, SIGNUP, STATION, ADD_PRINTER, QUICK }
+enum class StartRoute { LOGIN, SIGNUP, PRINTERS, TRY }
 
 /**
- * First open, no account needed: find the printer and print a PDF / photo right away. Logging in
- * (or creating a shop) opens the dashboard and connects this phone as the shop's printer.
+ * First open, no account: set up the printer and try prints. Everything else is behind
+ * "Log in for full features" (the normal sign-up; a shop is only made through Create shop).
  */
 @Composable
-fun StartScreen(connectedStore: String?, onOpen: (StartRoute) -> Unit, onOpenStation: () -> Unit) {
+fun StartScreen(notice: String?, onOpen: (StartRoute) -> Unit) {
     val t = strings()
     val settings = AppSettings.get(LocalContext.current)
     val lang by settings.lang.collectAsStateWithLifecycle()
     Column(
         Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp).testTag("start_screen"),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            Icon(AppIcons.Translate, contentDescription = t.language, modifier = Modifier.padding(end = 6.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            HelpIcon(page = "Start")
+            Spacer(Modifier.weight(1f))
             FilterChip(selected = lang == "bn", onClick = { settings.setLang("bn") }, label = { Text("বাংলা") }, modifier = Modifier.testTag("lang_bn"))
             Spacer(Modifier.size(6.dp))
             FilterChip(selected = lang == "en", onClick = { settings.setLang("en") }, label = { Text("EN") }, modifier = Modifier.testTag("lang_en"))
         }
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(84.dp)) {
+            Surface(shape = RoundedCornerShape(26.dp), color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(88.dp)) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(AppIcons.Print, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(48.dp))
+                    Icon(AppIcons.Print, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(50.dp))
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Text(t.appName, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+            Text(t.appName, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
             Text(t.tagline, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Tile(Icons.Filled.Search, t.findPrinter, Modifier.weight(1f).height(120.dp).testTag("start_find_printer")) { onOpen(StartRoute.ADD_PRINTER) }
-            Tile(AppIcons.Pdf, t.printFile, Modifier.weight(1f).height(120.dp).testTag("start_print_file")) { onOpen(StartRoute.QUICK) }
-        }
-        Button(onClick = { onOpen(StartRoute.LOGIN) }, modifier = Modifier.fillMaxWidth().height(58.dp).testTag("start_login")) {
-            Text(t.logIn, style = MaterialTheme.typography.titleMedium)
-        }
-        OutlinedButton(onClick = { onOpen(StartRoute.SIGNUP) }, modifier = Modifier.fillMaxWidth().height(58.dp).testTag("start_signup")) {
-            Icon(AppIcons.Store, contentDescription = null)
-            Spacer(Modifier.size(8.dp))
-            Text(t.createShop, style = MaterialTheme.typography.titleMedium)
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { if (connectedStore != null) onOpenStation() else onOpen(StartRoute.STATION) }, modifier = Modifier.testTag("start_station")) {
-                Icon(AppIcons.Station, contentDescription = null)
-                Spacer(Modifier.size(6.dp))
-                Text(t.station)
+        notice?.let {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth()) {
+                Text("🔓 $it", Modifier.padding(12.dp), fontWeight = FontWeight.Bold)
             }
-            HelpButton(page = "Start")
         }
-        connectedStore?.let { store ->
-            Surface(shape = RoundedCornerShape(14.dp), color = StatusGood.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(AppIcons.Print, contentDescription = null, tint = StatusGood)
-                    Spacer(Modifier.size(8.dp))
-                    Text("✓ $store", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                }
-            }
+        BigAction(AppIcons.Print, t.setUpPrinter, primary = true, tag = "start_printers") { onOpen(StartRoute.PRINTERS) }
+        BigAction(AppIcons.Bolt, "🧪 ${t.tryPrints}", primary = false, tag = "start_try") { onOpen(StartRoute.TRY) }
+        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+        com.sopifo.printagent.ui.print.FullFeatures(onLogin = { onOpen(StartRoute.LOGIN) }, onSignup = { onOpen(StartRoute.SIGNUP) })
+    }
+}
+
+@Composable
+private fun BigAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, primary: Boolean, tag: String, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = if (primary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier.fillMaxWidth().height(76.dp).testTag(tag).clickable(onClick = onClick),
+    ) {
+        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(34.dp), tint = if (primary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = if (primary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer)
         }
     }
 }

@@ -268,6 +268,16 @@ class ApiClient(
         return fetchImage(url)
     }
 
+    /** App 2.0.1: ONE order / parcel print drawn for the phone (no bulk unlock; /api/app/render). */
+    suspend fun renderSingle(kind: String, id: String, doc: String): RenderedImage {
+        val url = resolve(base(), "api/app/render").newBuilder()
+            .addQueryParameter("kind", kind)
+            .addQueryParameter("id", id)
+            .addQueryParameter("doc", doc)
+            .build()
+        return fetchImage(url)
+    }
+
     /** A courier parcel's label, drawn now. */
     suspend fun renderParcel(parcelId: String): RenderedImage {
         val url = resolve(base(), "api/device/parcels").newBuilder()

@@ -145,6 +145,15 @@ fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
                             )
                         }
                         if (s.printerIsLabel) {
+                            // Smart shrink: courier label barcodes redrawn sharp on the small label.
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("✨ Smart shrink (sharp barcode)", Modifier.weight(1f))
+                                Switch(
+                                    checked = s.smart,
+                                    onCheckedChange = { on -> vm.update { it.copy(smart = on) } },
+                                    modifier = Modifier.testTag("pdf_smart"),
+                                )
+                            }
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 ImageFit.entries.forEach { fit ->
                                     FilterChip(

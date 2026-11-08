@@ -1,6 +1,22 @@
 package com.sopifo.printagent.ui.shell
 
 import android.Manifest
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.Switch
+import androidx.compose.material3.rememberDrawerState
+import com.sopifo.printagent.ui.print.PrintersHubScreen
+import com.sopifo.printagent.ui.print.QuickStart
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -86,10 +102,6 @@ import com.sopifo.printagent.ui.pages.QuickMode
 import com.sopifo.printagent.ui.pages.QuickPrintScreen
 import com.sopifo.printagent.ui.pages.QuickPrintViewModel
 import com.sopifo.printagent.ui.pages.WebLinks
-import com.sopifo.printagent.ui.print.AddPrinterScreen
-import com.sopifo.printagent.ui.print.PrintSheet
-import com.sopifo.printagent.ui.print.PrintSheetAction
-import com.sopifo.printagent.ui.print.Tile
 import com.sopifo.printagent.ui.screens.PrintersScreen
 import com.sopifo.printagent.ui.screens.printerStateGood
 import com.sopifo.printagent.ui.theme.AppIcons
@@ -102,18 +114,18 @@ import kotlinx.coroutines.launch
 enum class ShellTab { HOME, AI, PLUS, ORDERS, STORE }
 
 /** Full-screen native pages over the shell. */
-enum class Overlay { ADD_PRINTER, QUICK, PRINTERS, RECENT }
+enum class Overlay { PRINTERS, QUICK, ADVANCED, RECENT }
 
 private data class StoreItem(val path: String, val icon: ImageVector, val label: (S) -> String)
 
-/** Store menu = the website's phone Store menu, minus pricing / custom domain (no payments in the app). */
+/** Store side menu = the website's sidebar, minus pricing / custom domain (no payments in the app). */
 private val STORE_ITEMS = listOf(
-    StoreItem("dashboard/products", AppIcons.Box) { it.products },
     StoreItem("dashboard/products/new", Icons.Filled.Add) { it.addProduct },
+    StoreItem("dashboard/products", AppIcons.Box) { it.products },
     StoreItem("pos", AppIcons.Cash) { it.pos },
+    StoreItem("#printers", AppIcons.Print) { it.printers },
     StoreItem("dashboard/customers", AppIcons.Users) { it.customers },
     StoreItem("dashboard/couriers", AppIcons.Truck) { it.couriers },
-    StoreItem("dashboard/print", AppIcons.Print) { it.cloudPrint },
     StoreItem("dashboard/inventory", AppIcons.Barcode) { it.inventory },
     StoreItem("dashboard/facebook", AppIcons.Chat) { it.facebook },
     StoreItem("dashboard/storefront", AppIcons.Store) { it.storefront },
@@ -151,8 +163,8 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
 
     var tab by rememberSaveable { mutableStateOf(ShellTab.HOME) }
     var storePath by rememberSaveable { mutableStateOf("dashboard/settings") }
-    var showSheet by remember { mutableStateOf(false) }
-    var showStore by remember { mutableStateOf(false) }
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val station by settings.station.collectAsStateWithLifecycle()
     var overlay by remember { mutableStateOf<Overlay?>(null) }
     var quickMode by remember { mutableStateOf(QuickMode.PDF) }
     var setupHidden by rememberSaveable { mutableStateOf(false) }
@@ -190,7 +202,7 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
     val views = remember { mutableStateMapOf<ShellTab, WebView>() }
     val host = remember {
         object : WebHost {
-            override fun openPrintSheet() { showSheet = true }
+            override fun openPrintSheet() { overlay = Overlay.PRINTERS }
             override fun openFacebookLogin() = WebLinks.open(activity, WebSession.facebookStartUrl(activity, c))
             override fun pickFiles(params: WebChromeClient.FileChooserParams, callback: ValueCallback<Array<Uri>>): Boolean {
                 fileCallback?.onReceiveValue(null)
@@ -208,6 +220,8 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
             override fun onPage(url: String) {
                 // Signed out on the website (session ended): back to the start screen.
                 val path = runCatching { Uri.parse(url).path.orEmpty() }.getOrDefault("")
+                // POS / orders open: connect the printer now so the first print is instant.
+                c.phonePrinter.warmFor(path)
                 if (path.startsWith("/sign-in") && !WebSession.isLoggedIn(c)) {
                     settings.clearShop()
                     onLoggedOut()
@@ -229,11 +243,15 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
         })
     }
     fun openStore(path: String) {
+        scope.launch { drawer.close() }
+        if (path == "#printers") {
+            overlay = Overlay.PRINTERS
+            return
+        }
         storePath = path
         val existing = views[ShellTab.STORE]
         if (existing != null) existing.loadUrl(WebSession.url(c, path)) else viewFor(ShellTab.STORE)
         tab = ShellTab.STORE
-        showStore = false
     }
 
     // Facebook came back from Chrome: finish the sign-in inside the visible web view.
@@ -247,7 +265,8 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
     val shared by SharedFile.item.collectAsStateWithLifecycle()
     LaunchedEffect(shared) { if (shared != null) { quickMode = if (shared!!.isPdf) QuickMode.PDF else QuickMode.IMAGE; overlay = Overlay.QUICK } }
 
-    BackHandler(enabled = overlay == null) {
+    BackHandler(enabled = overlay == null && drawer.isOpen) { scope.launch { drawer.close() } }
+    BackHandler(enabled = overlay == null && !drawer.isOpen) {
         val wv = views[tab]
         when {
             wv != null && wv.canGoBack() -> wv.goBack()
@@ -260,16 +279,44 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
     val loading = loadTab == tab && tabLoading
     val failed = loadTab == tab && tabFailed
 
+    val labelCfg = configs.firstOrNull { it.role == PrinterRole.LABEL }
+    val chipCfg = labelCfg ?: configs.firstOrNull()
+    ModalNavigationDrawer(
+        drawerState = drawer,
+        gesturesEnabled = drawer.isOpen,
+        drawerContent = {
+            ModalDrawerSheet(Modifier.width(300.dp)) {
+                StoreDrawer(
+                    t = t,
+                    shopName = shop.name,
+                    lang = lang,
+                    station = station,
+                    onItem = ::openStore,
+                    onStation = settings::setStation,
+                    onLogOut = {
+                        scope.launch { drawer.close() }
+                        WebSession.logOut(c)
+                        settings.clearShop()
+                        views.values.forEach { it.destroy() }
+                        views.clear()
+                        onLoggedOut()
+                    },
+                )
+            }
+        },
+    ) {
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
+                // Slim, one line: shop · printer chip · bell · help.
                 TopAppBar(
+                    expandedHeight = 52.dp,
                     title = {
-                        Text(shop.name ?: t.appName, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("shell_title"))
+                        Text(shop.name ?: t.appName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, modifier = Modifier.testTag("shell_title"))
                     },
                     actions = {
-                        PrinterDots(configs.map { it.role }.toSet(), status.mapValues { printerStateGood(it.value) }) { showSheet = true }
+                        PrinterChip(chipCfg?.name, chipCfg?.let { printerStateGood(status[it.role]) }, t) { overlay = Overlay.PRINTERS }
                         IconButton(onClick = { openStore("dashboard/notifications") }, modifier = Modifier.testTag("shell_bell")) {
                             Icon(Icons.Filled.Notifications, contentDescription = t.notifications)
                         }
@@ -278,9 +325,10 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
                 )
             },
             bottomBar = {
-                NavigationBar {
-                    BarItem(ShellTab.HOME, tab, Icons.Filled.Home, t.overview) { tab = it }
-                    BarItem(ShellTab.AI, tab, AppIcons.Sparkle, t.ai) { tab = it }
+                // Like the website's phone bar: Overview · Content Studio · (＋) · Orders · Store.
+                NavigationBar(Modifier.height(68.dp)) {
+                    BarItem(ShellTab.HOME, tab, AppIcons.Dashboard, t.overview) { tab = it }
+                    BarItem(ShellTab.AI, tab, AppIcons.Sparkle, t.studio) { tab = it }
                     NavigationBarItem(
                         selected = tab == ShellTab.PLUS,
                         onClick = {
@@ -288,21 +336,21 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
                             tab = ShellTab.PLUS
                         },
                         icon = {
-                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(44.dp)) {
+                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, shadowElevation = 4.dp, modifier = Modifier.size(46.dp)) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(if (shop.pos) AppIcons.Cash else Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                                 }
                             }
                         },
-                        label = { Text(if (shop.pos) t.pos else t.addOrder, maxLines = 1) },
+                        label = { Text(if (shop.pos) t.pos else t.add, maxLines = 1, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) },
                         modifier = Modifier.testTag("tab_plus"),
                     )
-                    BarItem(ShellTab.ORDERS, tab, AppIcons.Receipt, t.orders) { tab = it }
+                    BarItem(ShellTab.ORDERS, tab, AppIcons.Bag, t.orders) { tab = it }
                     NavigationBarItem(
                         selected = tab == ShellTab.STORE,
-                        onClick = { showStore = true },
-                        icon = { Icon(AppIcons.Store, contentDescription = null) },
-                        label = { Text(t.store, maxLines = 1) },
+                        onClick = { scope.launch { drawer.open() } },
+                        icon = { Icon(Icons.Filled.Menu, contentDescription = null) },
+                        label = { Text(t.store, maxLines = 1, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) },
                         modifier = Modifier.testTag("tab_store"),
                     )
                 }
@@ -325,16 +373,13 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
                         }
                     }
                 }
-                val printerDone = configs.isNotEmpty()
-                val courierDone = shop.courierCount > 0
-                if (tab == ShellTab.HOME && !setupHidden && !(printerDone && testPrinted && courierDone)) {
+                if (tab == ShellTab.HOME && !setupHidden && !(configs.isNotEmpty() && testPrinted && shop.courierCount > 0)) {
                     SetupCard(
                         t,
-                        printerDone = printerDone,
-                        testDone = testPrinted,
-                        courierDone = courierDone,
-                        onPrinter = { overlay = Overlay.ADD_PRINTER },
-                        onCourier = { openStore("dashboard/couriers") },
+                        printerDone = configs.isNotEmpty(),
+                        courierDone = shop.courierCount > 0,
+                        onPrinter = { overlay = Overlay.PRINTERS },
+                        onOpen = ::openStore,
                         onClose = { setupHidden = true },
                         modifier = Modifier.align(Alignment.BottomCenter),
                     )
@@ -342,54 +387,29 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
             }
         }
 
-        if (showSheet) {
-            PrintSheet(vm, onDismiss = { showSheet = false }) { action ->
-                showSheet = false
-                when (action) {
-                    PrintSheetAction.ADD_PRINTER -> overlay = Overlay.ADD_PRINTER
-                    PrintSheetAction.PRINTERS -> overlay = Overlay.PRINTERS
-                    PrintSheetAction.QUICK_PDF -> { quickMode = QuickMode.PDF; overlay = Overlay.QUICK }
-                    PrintSheetAction.QUICK_PHOTO -> { quickMode = QuickMode.IMAGE; overlay = Overlay.QUICK }
-                    PrintSheetAction.QUICK_TEXT -> { quickMode = QuickMode.TEXT; overlay = Overlay.QUICK }
-                    PrintSheetAction.RECENT -> overlay = Overlay.RECENT
+        overlay?.let { o ->
+            when (o) {
+                Overlay.PRINTERS -> FullScreenPage(onClose = { overlay = null }) {
+                    PrintersHubScreen(
+                        onBack = { overlay = null },
+                        onAdvanced = { overlay = Overlay.ADVANCED },
+                        onQuick = { q ->
+                            quickMode = when (q) { QuickStart.PDF -> QuickMode.PDF; QuickStart.PHOTO -> QuickMode.IMAGE; QuickStart.TEXT -> QuickMode.TEXT }
+                            overlay = Overlay.QUICK
+                        },
+                    )
                 }
-            }
-        }
-        if (showStore) {
-            ModalBottomSheet(onDismissRequest = { showStore = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier.padding(horizontal = 16.dp).testTag("store_menu"),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(STORE_ITEMS) { item -> Tile(item.icon, item.label(t)) { openStore(item.path) } }
-                    item {
-                        Tile(Icons.AutoMirrored.Filled.ExitToApp, if (lang == "en") "Log out" else "লগ আউট", tint = StatusBad) {
-                            showStore = false
-                            WebSession.logOut(c)
-                            settings.clearShop()
-                            views.values.forEach { it.destroy() }
-                            views.clear()
-                            onLoggedOut()
-                        }
+                else -> FullScreenOverlay(onClose = { overlay = if (o == Overlay.ADVANCED) Overlay.PRINTERS else null; SharedFile.item.value = null }) {
+                    when (o) {
+                        Overlay.QUICK -> QuickOverlay(quickMode)
+                        Overlay.ADVANCED -> PrintersScreen(vm)
+                        Overlay.RECENT -> ActivityScreen(viewModel<ActivityViewModel>(), vm) { it() }
+                        Overlay.PRINTERS -> Unit
                     }
                 }
             }
         }
-        if (overlay == Overlay.ADD_PRINTER) {
-            BackHandler { overlay = null }
-            AddPrinterScreen(onClose = { overlay = null })
-        } else overlay?.let { o ->
-            FullScreenOverlay(onClose = { overlay = null; SharedFile.item.value = null }) {
-                when (o) {
-                    Overlay.ADD_PRINTER -> Unit
-                    Overlay.QUICK -> QuickOverlay(quickMode)
-                    Overlay.PRINTERS -> PrintersScreen(vm)
-                    Overlay.RECENT -> ActivityScreen(viewModel<ActivityViewModel>(), vm) { it() }
-                }
-            }
-        }
+    }
     }
 }
 
@@ -426,72 +446,135 @@ private fun androidx.compose.foundation.layout.RowScope.BarItem(item: ShellTab, 
     )
 }
 
-/** 🖨 with a dot per printer (green ready / red not / grey none): opens the Print sheet. */
+/** 🖨 chip in the top bar: the printer's name and a dot, or a red "Add" when none. */
 @Composable
-fun PrinterDots(roles: Set<PrinterRole>, good: Map<PrinterRole, Boolean?>, onClick: () -> Unit) {
-    Row(
-        Modifier.clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp).testTag("shell_printers"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+fun PrinterChip(name: String?, good: Boolean?, t: S, onClick: () -> Unit) {
+    val none = name == null
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (none) StatusBad.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.padding(end = 2.dp).clickable(onClick = onClick).testTag("shell_printers"),
     ) {
-        Icon(AppIcons.Print, contentDescription = strings().printers)
-        if (roles.isEmpty()) {
-            Surface(Modifier.size(8.dp), shape = CircleShape, color = StatusBad) {}
-        } else {
-            PrinterRole.entries.filter { it in roles }.forEach { role ->
-                Surface(Modifier.size(8.dp), shape = CircleShape, color = when (good[role]) { true -> StatusGood; false -> StatusBad; null -> StatusNeutral }) {}
-            }
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Icon(AppIcons.Print, contentDescription = t.printers, modifier = Modifier.size(18.dp), tint = if (none) StatusBad else MaterialTheme.colorScheme.onSurface)
+            Text(
+                if (none) t.addPrinter else name!!.take(10),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (none) StatusBad else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+            if (!none) Surface(Modifier.size(8.dp), shape = CircleShape, color = when (good) { true -> StatusGood; false -> StatusBad; null -> StatusNeutral }) {}
         }
     }
 }
 
+/** Store side menu (like the website's sidebar) with print station, help and log out at the bottom. */
+@Composable
+private fun StoreDrawer(
+    t: S,
+    shopName: String?,
+    lang: String,
+    station: Boolean,
+    onItem: (String) -> Unit,
+    onStation: (Boolean) -> Unit,
+    onLogOut: () -> Unit,
+) {
+    val context = LocalContext.current
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 12.dp).testTag("store_drawer")) {
+        Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(AppIcons.Store, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+            Text(shopName ?: t.appName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        STORE_ITEMS.forEach { item ->
+            NavigationDrawerItem(
+                label = { Text(item.label(t), fontWeight = FontWeight.SemiBold) },
+                icon = { Icon(item.icon, contentDescription = null) },
+                selected = false,
+                onClick = { onItem(item.path) },
+                modifier = Modifier.padding(horizontal = 10.dp).testTag("drawer_${item.path.substringAfterLast('/').trimStart('#')}"),
+            )
+        }
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Row(Modifier.padding(horizontal = 22.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(AppIcons.Station, contentDescription = null)
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(t.printStation, fontWeight = FontWeight.SemiBold)
+                Text(t.stationBody, style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = station, onCheckedChange = onStation, modifier = Modifier.testTag("station_switch"))
+        }
+        NavigationDrawerItem(
+            label = { Text(t.help, fontWeight = FontWeight.SemiBold) },
+            icon = { Icon(AppIcons.Chat, contentDescription = null, tint = WhatsAppGreen) },
+            selected = false,
+            onClick = { SupportWhatsApp.open(context, "Menu") },
+            modifier = Modifier.padding(horizontal = 10.dp),
+        )
+        NavigationDrawerItem(
+            label = { Text(t.logOut, fontWeight = FontWeight.SemiBold, color = StatusBad) },
+            icon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = StatusBad) },
+            selected = false,
+            onClick = onLogOut,
+            modifier = Modifier.padding(horizontal = 10.dp).testTag("drawer_logout"),
+        )
+        Text(if (lang == "en") "Language: Settings" else "ভাষা: সেটিংস", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Opt-in setup: each item is something the seller may want; ✕ hides the card. */
 @Composable
 private fun SetupCard(
     t: S,
     printerDone: Boolean,
-    testDone: Boolean,
     courierDone: Boolean,
     onPrinter: () -> Unit,
-    onCourier: () -> Unit,
+    onOpen: (String) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier,
 ) {
     Surface(
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
         tonalElevation = 6.dp,
-        shadowElevation = 8.dp,
+        shadowElevation = 10.dp,
         modifier = modifier.fillMaxWidth().testTag("setup_card"),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(t.setupTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                HelpIcon(page = "Setup")
-                IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = t.back) }
+                Text(t.setupTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                IconButton(onClick = onClose, modifier = Modifier.testTag("setup_close")) { Icon(Icons.Filled.Close, contentDescription = t.back) }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Step(AppIcons.Print, t.stepPrinter, printerDone, Modifier.weight(1f), onPrinter)
-                Step(AppIcons.Bolt, t.stepTest, testDone, Modifier.weight(1f), onPrinter)
-                Step(AppIcons.Truck, t.stepCourier, courierDone, Modifier.weight(1f), onCourier)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Step(AppIcons.Print, t.stepPrinter, printerDone, onPrinter)
+                Step(AppIcons.Truck, t.stepCourier, courierDone) { onOpen("dashboard/couriers") }
+                Step(AppIcons.Tag, t.autoPrint, false) { onOpen("dashboard/settings") }
+                Step(AppIcons.Box, t.product, false) { onOpen("dashboard/products/new") }
+                Step(AppIcons.Cash, t.pos, false) { onOpen("pos") }
             }
         }
     }
 }
 
 @Composable
-private fun Step(icon: ImageVector, label: String, done: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun Step(icon: ImageVector, label: String, done: Boolean, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = if (done) StatusGood.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer,
-        modifier = modifier.clickable(enabled = !done, onClick = onClick),
+        color = if (done) StatusGood.copy(alpha = 0.14f) else MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier.width(84.dp).clickable(enabled = !done, onClick = onClick),
     ) {
-        Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(30.dp), tint = if (done) StatusGood else MaterialTheme.colorScheme.primary)
-                if (done) Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(14.dp).align(Alignment.BottomEnd).padding(0.dp))
-            }
-            Text(label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 1)
+        Column(Modifier.padding(vertical = 10.dp, horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(if (done) Icons.Filled.Check else icon, contentDescription = null, modifier = Modifier.size(28.dp), tint = if (done) StatusGood else MaterialTheme.colorScheme.primary)
+            Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 1)
         }
     }
+}
+
+/** A native full screen over the shell with its own top row (Printers). */
+@Composable
+fun FullScreenPage(onClose: () -> Unit, content: @Composable () -> Unit) {
+    BackHandler(onBack = onClose)
+    Surface(Modifier.fillMaxSize().statusBarsPadding()) { content() }
 }
 
 @Composable

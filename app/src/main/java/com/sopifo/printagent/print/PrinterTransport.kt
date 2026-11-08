@@ -22,6 +22,12 @@ import java.util.UUID
 interface PrinterConnection {
     suspend fun write(data: ByteArray)
     fun close()
+
+    /**
+     * Kept open between prints (fast printing, app 2.0.1): writes skip the drain wait that is only
+     * needed before closing. Transports without a link ignore it.
+     */
+    fun holdOpen(hold: Boolean) {}
 }
 
 interface PrinterTransport {
@@ -103,6 +109,13 @@ class BluetoothPrinterTransport(
 
     private class BluetoothConnection(private val socket: BluetoothSocket, private val speedKbps: Int) : PrinterConnection {
         private var settled = false
+        @Volatile private var held = false
+        /** Bytes of the last write, to drain before closing a held link. */
+        @Volatile private var lastBytes = 0
+
+        override fun holdOpen(hold: Boolean) {
+            held = hold
+        }
 
         override suspend fun write(data: ByteArray) {
             // Many printers aren't ready the instant the link comes up and drop the first bytes.
@@ -112,10 +125,10 @@ class BluetoothPrinterTransport(
             }
             // The whole send runs on one thread, paced with sleeps, under one hard time limit: a
             // write that never returns fails the print and frees the printer instead of holding it.
+            var offset = 0
             try {
                 HardTimeout.run(SendSpeed.writeTimeoutMs(data.size, speedKbps), "write", onTimeout = { socket.close() }) {
                     val out = socket.outputStream
-                    var offset = 0
                     val chunk = SendSpeed.chunkSize(speedKbps)
                     val pause = SendSpeed.chunkDelayMs(speedKbps)
                     while (offset < data.size) {
@@ -128,15 +141,30 @@ class BluetoothPrinterTransport(
                         Thread.sleep(pause)
                     }
                     // Give the printer time to drain before the link closes (closing early truncates output).
-                    Thread.sleep(drainDelayMs(data.size))
+                    // A held link isn't closing: the next print goes straight on.
+                    if (!held) Thread.sleep(drainDelayMs(data.size))
                 }
+                lastBytes = data.size
             } catch (e: IOException) {
+                // Nothing reached the printer (a kept-open link that went stale): safe to reconnect and resend.
+                if (offset == 0) throw PrintException(PrintFailure.CONNECT_FAILED, "Link lost: ${e.message}", e)
                 throw PrintException(PrintFailure.WRITE_FAILED, "Write failed: ${e.message}", e)
             }
         }
 
         // close() can block on the same phones: never on the caller's thread.
-        override fun close() = closeInBackground(socket)
+        override fun close() {
+            if (held) {
+                val drain = drainDelayMs(lastBytes)
+                HardTimeout.daemon("bt-close-held") {
+                    Thread.sleep(drain)
+                    runCatching { socket.outputStream.close() }
+                    runCatching { socket.close() }
+                }
+            } else {
+                closeInBackground(socket)
+            }
+        }
     }
 
     companion object {

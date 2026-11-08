@@ -67,7 +67,11 @@ import com.sopifo.printagent.ui.shell.StartRoute
 import com.sopifo.printagent.ui.shell.StartScreen
 import com.sopifo.printagent.ui.shell.WebLoginScreen
 import com.sopifo.printagent.ui.shell.WebSession
-import com.sopifo.printagent.ui.print.AddPrinterScreen
+import com.sopifo.printagent.ui.print.PrintersHubScreen
+import com.sopifo.printagent.ui.print.TryPrintsScreen
+import com.sopifo.printagent.ui.shell.FullScreenPage
+import com.sopifo.printagent.ui.shell.strings
+import com.sopifo.printagent.ui.screens.PrintersScreen
 import com.sopifo.printagent.ui.pages.QuickMode
 import com.sopifo.printagent.ui.pages.QuickPrintViewModel
 import androidx.activity.compose.BackHandler
@@ -105,15 +109,16 @@ fun AppRoot(
         HelpScreen(onClose = { showHelp = false })
         return
     }
-    // Share → Sopifo before logging in: Quick print right away.
+    // Share → Sopifo needs an account (full features): the start screen says so; after login it opens.
     val shared by SharedFile.item.collectAsStateWithLifecycle()
-    LaunchedEffect(shared) { if (shared != null && !loggedIn) route = StartRoute.QUICK }
+    var advanced by rememberSaveable { mutableStateOf(false) }
+    val t = strings()
 
     when {
         registered == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         // Print station: the simple status screen; prints come from everyone in the shop.
         station && registered == true -> MainTabs(vm, onRequestPermissions, onHelp = { showHelp = true }, openRequest, onOpenHandled)
-        station && route == null -> RegistrationScreen(vm, onHelp = { showHelp = true })
+        station -> RegistrationScreen(vm, onHelp = { showHelp = true })
         loggedIn -> AppShell(vm, onLoggedOut = { loggedIn = false })
         route == StartRoute.LOGIN || route == StartRoute.SIGNUP -> WebLoginScreen(
             path = if (route == StartRoute.SIGNUP) "sign-up?redirect_url=%2Fdashboard" else "sign-in?redirect_url=%2Fdashboard",
@@ -123,31 +128,19 @@ fun AppRoot(
                 loggedIn = true
             },
         )
-        route == StartRoute.STATION -> {
-            BackHandler { route = null }
-            LaunchedEffect(Unit) { settings.setStation(true) }
-            RegistrationScreen(vm, onHelp = { showHelp = true })
+        advanced -> FullScreenOverlay(onClose = { advanced = false }) { PrintersScreen(vm) }
+        route == StartRoute.PRINTERS -> FullScreenPage(onClose = { route = null }) {
+            PrintersHubScreen(onBack = { route = null }, onAdvanced = { advanced = true }, onQuick = null)
         }
-        route == StartRoute.ADD_PRINTER -> {
-            BackHandler { route = null }
-            AddPrinterScreen(onClose = { route = null })
+        route == StartRoute.TRY -> FullScreenPage(onClose = { route = null }) {
+            TryPrintsScreen(
+                onBack = { route = null },
+                onPrinters = { route = StartRoute.PRINTERS },
+                onLogin = { route = StartRoute.LOGIN },
+                onSignup = { route = StartRoute.SIGNUP },
+            )
         }
-        route == StartRoute.QUICK -> FullScreenOverlay(onClose = { route = null; SharedFile.item.value = null }) {
-            val qvm: QuickPrintViewModel = viewModel()
-            val snackbar = remember { SnackbarHostState() }
-            LaunchedEffect(shared) {
-                shared?.let { f -> if (f.isPdf) qvm.pickPdf(f.uri) else qvm.pickImage(f.uri) } ?: qvm.update { it.copy(mode = QuickMode.PDF) }
-            }
-            Box(Modifier.fillMaxSize()) {
-                QuickPrintScreen(qvm, snackbar)
-                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
-            }
-        }
-        else -> StartScreen(
-            connectedStore = if (registered == true) config?.storeName else null,
-            onOpen = { route = it },
-            onOpenStation = { settings.setStation(true) },
-        )
+        else -> StartScreen(notice = if (shared != null) t.loginToPrintFile else null, onOpen = { route = it })
     }
 }
 

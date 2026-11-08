@@ -111,6 +111,9 @@ class AppContainer(private val context: Context) {
     val runReporter: RunReporter by lazy { RunReporter(db.printRunDao()) { api.reportPrintResults(it) } }
 
     /** Prints the seller starts in the app (Orders, Shipping, Quick print): straight to the printer. */
+    /** Fast printing from the website inside the app (bridge): POS receipts, pre-drawn order prints. */
+    val phonePrinter: com.sopifo.printagent.fast.PhonePrinter by lazy { com.sopifo.printagent.fast.PhonePrinter(context, this) }
+
     val runner: PrintRunner by lazy {
         PrintRunner(
             dao = db.printRunDao(),

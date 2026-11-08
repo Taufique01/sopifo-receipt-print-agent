@@ -54,6 +54,9 @@ class PrintDataBuilder {
         return fromBitmap(decoded, printer, copies, sourceWidth = bounds.outWidth)
     }
 
+    /** A bitmap drawn on the phone (POS receipt, smart-shrunk label) as printer bytes. */
+    fun fromDrawn(bitmap: Bitmap, printer: PrinterConfigEntity): PrintData = fromBitmap(bitmap, printer, 1, bitmap.width)
+
     fun testPage(printer: PrinterConfigEntity): ByteArray {
         // 384 dots (48 mm) fits every supported paper width.
         val width = TEST_PAGE_WIDTH

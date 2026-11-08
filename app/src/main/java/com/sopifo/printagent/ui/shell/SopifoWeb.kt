@@ -136,6 +136,20 @@ class SopifoBridge(private val activity: Activity, private val webView: WebView,
         c.handleWake(jobId, source = "app")
     }
 
+    /** POS: the receipt drawn and printed on this phone now. False = not taken (the website prints it). */
+    @JavascriptInterface
+    fun printReceipt(json: String): Boolean = trusted && json.length < 200_000 && c.phonePrinter.printReceipt(json)
+
+    /** One order / parcel print by this phone (drawn ahead when possible). False = not taken. */
+    @JavascriptInterface
+    fun printDoc(kind: String, id: String, doc: String): Boolean = trusted && c.phonePrinter.printDoc(kind, id, doc)
+
+    /** An order page opened: draw its prints ahead. */
+    @JavascriptInterface
+    fun preparePrint(kind: String, id: String) {
+        if (trusted) c.phonePrinter.prepare(kind, id)
+    }
+
     @JavascriptInterface
     fun printUrl(url: String) {
         if (!trusted) return

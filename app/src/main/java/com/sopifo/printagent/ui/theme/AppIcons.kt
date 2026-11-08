@@ -90,6 +90,8 @@ object AppIcons {
     val Barcode: ImageVector by lazy { filled("Barcode", "M2,4h2v16H2V4zM6,4h1v16H6V4zM8,4h3v16H8V4zM12,4h1v16h-1V4zM15,4h2v16h-2V4zM18,4h1v16h-1V4zM20,4h2v16h-2V4z") }
     val Station: ImageVector by lazy { filled("Station", "M17,1.01L7,1c-1.1,0 -2,0.9 -2,2v18c0,1.1 0.9,2 2,2h10c1.1,0 2,-0.9 2,-2V3c0,-1.1 -0.9,-1.99 -2,-1.99zM17,19H7V5h10v14zM12,6.5l-3,3h2V15h2V9.5h2L12,6.5z") }
 
+    val Bag: ImageVector by lazy { filled("Bag", "M18,6h-2c0,-2.21 -1.79,-4 -4,-4S8,3.79 8,6H6c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2V8c0,-1.1 -0.9,-2 -2,-2zM12,4c1.1,0 2,0.9 2,2h-4c0,-1.1 0.9,-2 2,-2zM18,20H6V8h2v2c0,0.55 0.45,1 1,1s1,-0.45 1,-1V8h4v2c0,0.55 0.45,1 1,1s1,-0.45 1,-1V8h2v12z") }
+
     private fun filled(name: String, path: String): ImageVector =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
             .addPath(addPathNodes(path), fill = SolidColor(Color.Black))
