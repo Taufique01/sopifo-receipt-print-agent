@@ -64,6 +64,12 @@ class PrintersViewModel(app: Application) : AndroidViewModel(app) {
         _picker.update { it.copy(role = null, scanning = false, pairingAddress = null) }
     }
 
+    /** Inline list (the guide): search without opening the pop-up. */
+    fun startSearch() {
+        _picker.update { it.copy(devices = emptyList(), pairFailed = false) }
+        scan()
+    }
+
     fun scan() {
         if (!finder.hasPermissions() || !finder.isEnabled) return
         scanJob?.cancel()
@@ -79,9 +85,14 @@ class PrintersViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleShowAll() = _picker.update { it.copy(showAll = !it.showAll) }
 
-    /** Pairs if needed, saves it for the open section, prints a test page, then asks. */
-    fun choose(device: FoundDevice) {
-        val role = _picker.value.role ?: return
+    /** The guide moves on once a printer is saved for this role. */
+    private val _chosen = MutableStateFlow<PrinterRole?>(null)
+    val chosen: StateFlow<PrinterRole?> = _chosen.asStateFlow()
+    fun consumeChosen() { _chosen.value = null }
+
+    /** Pairs if needed and saves it for [forRole] (or the open section); [autoTest] prints a test and asks. */
+    fun choose(device: FoundDevice, forRole: PrinterRole? = null, autoTest: Boolean = true) {
+        val role = forRole ?: _picker.value.role ?: return
         if (_picker.value.pairingAddress != null) return
         scanJob?.cancel()
         _picker.update { it.copy(pairingAddress = device.address, pairFailed = false) }
@@ -92,6 +103,11 @@ class PrintersViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             save(role, device)
+            _chosen.value = role
+            if (!autoTest) {
+                _picker.update { it.copy(role = null, pairingAddress = null) }
+                return@launch
+            }
             _picker.update { it.copy(role = null, pairingAddress = null, busy = role) }
             runCatching { c.printers.testPrint(role) }.onFailure { _message.value = "✗ ${it.message}" }
             _picker.update { it.copy(busy = null, asking = role) }
@@ -135,6 +151,100 @@ class PrintersViewModel(app: Application) : AndroidViewModel(app) {
             c.printers.refreshPassive()
         }
     }
+
+    private val settings = AppSettings.get(app)
+
+    /** Last guide print, waiting for "Did it print?". */
+    private val _testSent = MutableStateFlow(false)
+    val testSent: StateFlow<Boolean> = _testSent.asStateFlow()
+
+    enum class Sample { TEST_LABEL, PATHAO, STEADFAST, TEST_RECEIPT, TEST_INVOICE }
+
+    /** The guide's test prints: the label printer's test page, sample courier labels (smart shrink), receipts. */
+    fun printSample(sample: Sample) {
+        val role = if (sample == Sample.TEST_RECEIPT || sample == Sample.TEST_INVOICE) PrinterRole.RECEIPT else PrinterRole.LABEL
+        _picker.update { it.copy(busy = role) }
+        viewModelScope.launch {
+            try {
+                val printer = c.printers.config(role) ?: throw IllegalStateException(if (role == PrinterRole.LABEL) "No label printer" else "No receipt printer")
+                when (sample) {
+                    Sample.TEST_LABEL, Sample.TEST_RECEIPT -> c.printers.testPrint(role)
+                    else -> {
+                        val bytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                            val bmp = when (sample) {
+                                Sample.PATHAO -> shrink(com.sopifo.printagent.fast.SampleLabels.pathao(), printer)
+                                Sample.STEADFAST -> shrink(com.sopifo.printagent.fast.SampleLabels.steadfast(), printer)
+                                else -> sampleInvoice(printer)
+                            }
+                            PrintDataBuilder().fromDrawn(bmp, printer).bytes.also { bmp.recycle() }
+                        }
+                        c.printers.printFast(printer, bytes)
+                    }
+                }
+                _testSent.value = true
+            } catch (e: Exception) {
+                _message.value = "✗ ${e.message}"
+            } finally {
+                _picker.update { it.copy(busy = null) }
+            }
+        }
+    }
+
+    private fun shrink(sample: android.graphics.Bitmap, printer: PrinterConfigEntity): android.graphics.Bitmap {
+        val target = if (printer.protocol == PrinterProtocol.TSPL) settings.labelSize.value.target
+        else com.sopifo.printagent.quick.QuickTarget(PrintDataBuilder.paperWidthDots(printer.paperWidthMm) ?: PrintDataBuilder.PAPER_58_MM_DOTS)
+        return com.sopifo.printagent.quick.QuickPrintRenderer(getApplication()).smartFromBitmap(sample, target)
+    }
+
+    private fun sampleInvoice(printer: PrinterConfigEntity): android.graphics.Bitmap {
+        val r = com.sopifo.printagent.fast.ReceiptRenderer
+        val receipt = com.sopifo.printagent.fast.ReceiptRenderer.Receipt(
+            number = "SF-1001", atMillis = System.currentTimeMillis(), shopName = "Sopifo Demo Shop",
+            shopPhone = "01700-000000", shopAddress = "Mirpur, Dhaka",
+            items = listOf(
+                com.sopifo.printagent.fast.ReceiptRenderer.Item("T-shirt (M)", 2, 450.0, 900.0),
+                com.sopifo.printagent.fast.ReceiptRenderer.Item("Cap", 1, 250.0, 250.0),
+            ),
+            subtotal = 1150.0, discount = 50.0, total = 1100.0, payment = "cash", received = 1200.0, change = 100.0,
+            customerName = "Sample Customer", customerPhone = "01800-000000",
+        )
+        val width = PrintDataBuilder.paperWidthDots(printer.paperWidthMm) ?: PrintDataBuilder.PAPER_58_MM_DOTS
+        return r.draw(receipt, width, if (settings.lang.value == "en") r.EN else r.BN)
+    }
+
+    /** "Did it print?" in the guide's test step. */
+    fun answerTest(printed: Boolean) {
+        _testSent.value = false
+        settings.updateSetup { it.copy(testPrinted = printed || it.testPrinted, testFailed = !printed) }
+    }
+
+    fun clearTestSent() { _testSent.value = false }
+
+    fun setSize(size: com.sopifo.printagent.quick.QuickLabelSize) {
+        settings.setLabelSize(size)
+        c.phonePrinter.forgetDrawn()
+    }
+
+    /** Step 2 done: size + gap confirmed (and sent to the website when logged in). */
+    fun confirmSize() {
+        settings.updateSetup { it.copy(sizeConfirmed = true) }
+        viewModelScope.launch { com.sopifo.printagent.ui.shell.SizeSync.sync(c) }
+    }
+
+    /** Receipts on the label printer too ("Same printer"). */
+    fun useLabelPrinterForReceipts(paperMm: Int) {
+        viewModelScope.launch {
+            val label = c.db.printerConfigDao().get(PrinterRole.LABEL) ?: return@launch
+            c.db.printerConfigDao().upsert(label.copy(role = PrinterRole.RECEIPT, paperWidthMm = paperMm, updatedAt = System.currentTimeMillis()))
+            settings.updateSetup { it.copy(receiptSkipped = false) }
+            _chosen.value = PrinterRole.RECEIPT
+        }
+    }
+
+    fun skipLabel() = settings.updateSetup { it.copy(labelSkipped = true) }
+    fun unskipLabel() = settings.updateSetup { it.copy(labelSkipped = false) }
+    fun skipReceipt() = settings.updateSetup { it.copy(receiptSkipped = true) }
+    fun finishFirstSetup() = settings.updateSetup { it.copy(firstSetupDone = true) }
 
     private fun update(role: PrinterRole, change: (PrinterConfigEntity) -> PrinterConfigEntity) {
         viewModelScope.launch {

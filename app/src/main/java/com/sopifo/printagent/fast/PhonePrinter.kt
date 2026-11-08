@@ -27,7 +27,21 @@ import java.util.UUID
  * shop): the website then prints the usual way.
  */
 class PhonePrinter(private val context: Context, private val c: AppContainer) {
-    private val cache = LruCache<String, ByteArray>(24)
+    /** Pre-drawn prints, kept 5 minutes (the label size may change on the website meanwhile). */
+    private class Drawn(val png: ByteArray, val at: Long)
+    private val cache = LruCache<String, Drawn>(24)
+
+    private fun cached(key: String): ByteArray? {
+        val d = cache.get(key) ?: return null
+        if (SystemClock.elapsedRealtime() - d.at > CACHE_MS) {
+            cache.remove(key)
+            return null
+        }
+        return d.png
+    }
+
+    /** The label size changed: drawn labels are the old size. */
+    fun forgetDrawn() = cache.evictAll()
     private val main = Handler(Looper.getMainLooper())
     private val builder = PrintDataBuilder()
 
@@ -59,11 +73,11 @@ class PhonePrinter(private val context: Context, private val c: AppContainer) {
         c.scope.launch {
             for (doc in docs) {
                 val key = "$kind:$id:$doc"
-                if (cache.get(key) != null) continue
+                if (cached(key) != null) continue
                 val role = roleFor(doc)
                 if (c.printers.config(role) == null) continue
                 runCatching { c.api.renderSingle(kind, id, doc).png }
-                    .onSuccess { cache.put(key, it) }
+                    .onSuccess { cache.put(key, Drawn(it, SystemClock.elapsedRealtime())) }
                     .onFailure { AppLog.w(TAG, "Pre-draw failed", it, "kind" to kind, "doc" to doc) }
             }
         }
@@ -78,7 +92,7 @@ class PhonePrinter(private val context: Context, private val c: AppContainer) {
             var status = "printed"
             var reason: String? = null
             try {
-                val png = cache.get(key) ?: c.api.renderSingle(kind, id, doc).png
+                val png = cached(key) ?: c.api.renderSingle(kind, id, doc).png
                 val data = c.printers.buildFromPng(png, printer, 1)
                 c.printers.printFast(printer, data.bytes)
                 toast(if (doc == "invoice") "✓ 🧾" else "✓ 🏷")
@@ -121,5 +135,6 @@ class PhonePrinter(private val context: Context, private val c: AppContainer) {
 
     private companion object {
         const val TAG = "PhonePrinter"
+        const val CACHE_MS = 5 * 60_000L
     }
 }

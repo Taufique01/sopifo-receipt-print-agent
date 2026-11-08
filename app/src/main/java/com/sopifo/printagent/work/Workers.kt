@@ -104,6 +104,14 @@ class HeartbeatWorker(context: Context, params: WorkerParameters) : AgentWorker(
                     receipt = status.getValue(PrinterRole.RECEIPT).wire,
                     label = status.getValue(PrinterRole.LABEL).wire,
                 ),
+                // Which printers this phone has: the website sends it only jobs it can print.
+                container.db.printerConfigDao().getAll().map {
+                    com.sopifo.printagent.data.api.HeartbeatPrinter(
+                        role = if (it.role == PrinterRole.LABEL) "label" else "receipt",
+                        printerName = it.name,
+                        bluetoothAddress = it.macAddress,
+                    )
+                },
             )
             // Support asked for logs and the push didn't get through.
             if (logsRequested) container.scheduler.enqueueLogUpload(WorkScheduler.LOG_REQUEST)

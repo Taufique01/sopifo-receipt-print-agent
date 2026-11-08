@@ -67,8 +67,7 @@ import com.sopifo.printagent.ui.shell.StartRoute
 import com.sopifo.printagent.ui.shell.StartScreen
 import com.sopifo.printagent.ui.shell.WebLoginScreen
 import com.sopifo.printagent.ui.shell.WebSession
-import com.sopifo.printagent.ui.print.PrintersHubScreen
-import com.sopifo.printagent.ui.print.TryPrintsScreen
+import com.sopifo.printagent.ui.print.PrinterSetupScreen
 import com.sopifo.printagent.ui.shell.FullScreenPage
 import com.sopifo.printagent.ui.shell.strings
 import com.sopifo.printagent.ui.screens.PrintersScreen
@@ -119,23 +118,30 @@ fun AppRoot(
         // Print station: the simple status screen; prints come from everyone in the shop.
         station && registered == true -> MainTabs(vm, onRequestPermissions, onHelp = { showHelp = true }, openRequest, onOpenHandled)
         station -> RegistrationScreen(vm, onHelp = { showHelp = true })
-        loggedIn -> AppShell(vm, onLoggedOut = { loggedIn = false })
+        loggedIn -> {
+            // Already logged in from an earlier session: make sure the print service knows.
+            LaunchedEffect(Unit) { WebSession.rememberLogin(container) }
+            AppShell(vm, onLoggedOut = {
+                AppSettings.get(context).setLoggedIn(false)
+                loggedIn = false
+            })
+        }
         route == StartRoute.LOGIN || route == StartRoute.SIGNUP -> WebLoginScreen(
             path = if (route == StartRoute.SIGNUP) "sign-up?redirect_url=%2Fdashboard" else "sign-in?redirect_url=%2Fdashboard",
             onBack = { route = null },
             onDone = {
+                WebSession.rememberLogin(container)
                 route = null
                 loggedIn = true
             },
         )
         advanced -> FullScreenOverlay(onClose = { advanced = false }) { PrintersScreen(vm) }
         route == StartRoute.PRINTERS -> FullScreenPage(onClose = { route = null }) {
-            PrintersHubScreen(onBack = { route = null }, onAdvanced = { advanced = true }, onQuick = null)
-        }
-        route == StartRoute.TRY -> FullScreenPage(onClose = { route = null }) {
-            TryPrintsScreen(
+            PrinterSetupScreen(
                 onBack = { route = null },
-                onPrinters = { route = StartRoute.PRINTERS },
+                onAdvanced = { advanced = true },
+                onQuick = null,
+                loggedIn = false,
                 onLogin = { route = StartRoute.LOGIN },
                 onSignup = { route = StartRoute.SIGNUP },
             )

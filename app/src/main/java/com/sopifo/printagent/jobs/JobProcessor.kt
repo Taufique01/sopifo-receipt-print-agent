@@ -186,8 +186,10 @@ class JobProcessor(
 
         val printer = printers.config(type.printer)
         if (printer == null) {
-            val reason = "no ${type.printer.name.lowercase()} printer configured"
-            jobs.recordRecent(job.id, type.wireName, RecentJobStatus.FAILED, reason)
+            // The shop's other device (PC, another phone) prints it: skip quietly, not "failed".
+            val reason = "${SKIPPED_REASON}no ${type.printer.name.lowercase()} printer on this phone"
+            AppLog.i(TAG, "Skipping job: no printer for it here", "job" to job.id, "role" to type.printer)
+            jobs.recordRecent(job.id, type.wireName, RecentJobStatus.SKIPPED_NOT_PENDING, reason.removePrefix(SKIPPED_REASON))
             reportFailedSafely(job.id, reason)
             return JobOutcome.FAILED
         }
@@ -535,12 +537,14 @@ class JobProcessor(
     /** Thrown from the claim hook to stop before any byte is sent; the printer itself is fine. */
     private class AbortPrint(message: String) : Exception(message)
 
-    private companion object {
-        const val TAG = "JobProcessor"
+    companion object {
+        /** Reason prefix: reported as outcome "skipped" (another device has the printer). */
+        const val SKIPPED_REASON = "skipped:"
+        private const val TAG = "JobProcessor"
         /** Empty fetches (backend still rendering) before giving up; the batch stays resumable. */
-        const val MAX_IDLE_FETCHES = 40
-        const val IDLE_FETCH_DELAY_MS = 750L
+        private const val MAX_IDLE_FETCHES = 40
+        private const val IDLE_FETCH_DELAY_MS = 750L
         /** How long an open printer link waits for the next job before closing. */
-        const val KEEP_OPEN_MS = 8_000L
+        private const val KEEP_OPEN_MS = 8_000L
     }
 }

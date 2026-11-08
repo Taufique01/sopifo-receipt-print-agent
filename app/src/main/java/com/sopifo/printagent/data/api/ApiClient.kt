@@ -192,7 +192,10 @@ class ApiClient(
 
     suspend fun failJob(jobId: String, error: String) {
         require(UrlPolicy.isValidJobId(jobId)) { "Invalid job id" }
-        execute(post(base(), "api/print-jobs/$jobId/fail", json.encodeToString(FailJobRequest.serializer(), FailJobRequest(error.take(500)))))
+        // "skipped:…" = this phone has no printer for it (another device prints it): not an error.
+        val skipped = error.startsWith(com.sopifo.printagent.jobs.JobProcessor.SKIPPED_REASON)
+        val body = if (skipped) FailJobRequest(error.removePrefix(com.sopifo.printagent.jobs.JobProcessor.SKIPPED_REASON).take(500), "skipped") else FailJobRequest(error.take(500))
+        execute(post(base(), "api/print-jobs/$jobId/fail", json.encodeToString(FailJobRequest.serializer(), body)))
     }
 
     suspend fun cancelJob(jobId: String) {

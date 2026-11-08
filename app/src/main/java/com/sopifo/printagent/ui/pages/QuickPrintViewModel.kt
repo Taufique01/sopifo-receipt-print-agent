@@ -123,7 +123,7 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
         val isLabel = printer?.protocol == PrinterProtocol.TSPL
         _state.update { it.copy(printerIsLabel = isLabel, printerMissing = printer == null) }
         return if (isLabel) {
-            QuickTarget(s.labelSize.w, s.labelSize.h)
+            s.labelSize.target
         } else {
             QuickTarget(PrintDataBuilder.paperWidthDots(printer?.paperWidthMm) ?: PrintDataBuilder.PAPER_58_MM_DOTS)
         }
@@ -134,7 +134,7 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
         val target = target()
         return when (s.mode) {
             QuickMode.TEXT -> if (s.html.isBlank()) emptyList() else listOf(renderer.html(s.html, target))
-            QuickMode.IMAGE -> s.imageUri?.let { listOf(renderer.image(it, target, s.imageFit, s.imageZoom)) } ?: emptyList()
+            QuickMode.IMAGE -> s.imageUri?.let { listOf(renderer.turned(renderer.image(it, target, s.imageFit, s.imageZoom), target)) } ?: emptyList()
             QuickMode.PDF -> s.pdfUri?.let {
                 val to = if (firstOnly) s.pageFrom else s.pageTo
                 renderer.pdfPages(it, s.pageFrom, to, target, s.pdfTrim, s.pdfFit, s.pdfDarkness, s.pdfStretch, smart = s.smart)

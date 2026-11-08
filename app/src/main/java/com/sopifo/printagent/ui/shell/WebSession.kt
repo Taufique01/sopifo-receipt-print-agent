@@ -53,7 +53,27 @@ object WebSession {
     fun isLoggedIn(c: AppContainer): Boolean =
         CookieManager.getInstance().getCookie(base(c)).orEmpty().contains("-auth-token")
 
+    /**
+     * For code outside the web view (the print service): the login the app remembered, the
+     * cookie, or this phone being connected to a shop — any of them counts.
+     */
+    fun hasAccount(c: AppContainer): Boolean = accountSignals(c).any { it.value }
+
+    /** Each way the phone can know about the login, for the print service and its log. */
+    fun accountSignals(c: AppContainer): Map<String, Boolean> = linkedMapOf(
+        "remembered" to AppSettings.get(c.appContext).loggedIn,
+        "shop_phone" to (c.device.baseUrl != null && runCatching { kotlinx.coroutines.runBlocking { c.device.hasSession() } }.getOrDefault(false)),
+        "cookie" to runCatching { isLoggedIn(c) }.getOrDefault(false),
+    )
+
+    /** Logged in inside the app: remember it and save the session cookies to disk now. */
+    fun rememberLogin(c: AppContainer) {
+        AppSettings.get(c.appContext).setLoggedIn(true)
+        runCatching { CookieManager.getInstance().flush() }
+    }
+
     fun logOut(c: AppContainer) {
+        AppSettings.get(c.appContext).setLoggedIn(false)
         val cm = CookieManager.getInstance()
         val base = base(c)
         cm.getCookie(base).orEmpty().split(';').map { it.substringBefore('=').trim() }

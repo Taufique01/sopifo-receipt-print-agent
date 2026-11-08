@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -52,7 +53,7 @@ fun HelpIcon(page: String, modifier: Modifier = Modifier) {
 fun HelpButton(page: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val t = strings()
-    OutlinedButton(onClick = { SupportWhatsApp.open(context, page) }, modifier = modifier.testTag("help_whatsapp")) {
+    FilledTonalButton(onClick = { SupportWhatsApp.open(context, page) }, modifier = modifier.testTag("help_whatsapp")) {
         Icon(AppIcons.Chat, contentDescription = null, tint = WhatsAppGreen)
         Spacer(Modifier.size(6.dp))
         Text(t.help)

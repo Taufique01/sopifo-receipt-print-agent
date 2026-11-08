@@ -64,12 +64,22 @@ data class PrinterStatusPayload(
     val label: String,
 )
 
+/** A printer this phone uses, so the website knows which jobs to send here. */
+@Serializable
+data class HeartbeatPrinter(
+    val role: String,
+    @SerialName("printer_name") val printerName: String,
+    @SerialName("bluetooth_address") val bluetoothAddress: String? = null,
+)
+
 @Serializable
 data class HeartbeatRequest(
     @SerialName("battery_percent") val batteryPercent: Int?,
     @SerialName("printer_status") val printerStatus: PrinterStatusPayload,
     @SerialName("app_version") val appVersion: String,
     @SerialName("last_seen") val lastSeen: String,
+    /** Sent so the website knows this phone's label / receipt printers (null = unchanged). */
+    val printers: List<HeartbeatPrinter>? = null,
 )
 
 @Serializable
@@ -79,7 +89,7 @@ data class FcmTokenRequest(@SerialName("fcm_token") val fcmToken: String)
 data class CompleteJobRequest(@SerialName("printed_at") val printedAt: String)
 
 @Serializable
-data class FailJobRequest(val error: String)
+data class FailJobRequest(val error: String, val outcome: String = "failed")
 
 /** A print job as returned by the backend. Everything here is untrusted and validated before use. */
 @Serializable

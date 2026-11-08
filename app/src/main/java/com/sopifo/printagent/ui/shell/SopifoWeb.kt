@@ -144,6 +144,12 @@ class SopifoBridge(private val activity: Activity, private val webView: WebView,
     @JavascriptInterface
     fun printDoc(kind: String, id: String, doc: String): Boolean = trusted && c.phonePrinter.printDoc(kind, id, doc)
 
+    /** A bulk batch for this phone was created: start now (the push stays as backup). */
+    @JavascriptInterface
+    fun printBatch(batchId: String) {
+        if (trusted && Regex("^[A-Za-z0-9_-]{6,64}$").matches(batchId)) c.handleBatchWake(batchId, source = "app")
+    }
+
     /** An order page opened: draw its prints ahead. */
     @JavascriptInterface
     fun preparePrint(kind: String, id: String) {

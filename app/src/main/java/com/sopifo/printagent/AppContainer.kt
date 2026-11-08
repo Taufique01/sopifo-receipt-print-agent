@@ -40,6 +40,8 @@ import java.io.File
 
 /** Manual dependency graph; one instance per process, owned by [SopifoApp]. */
 class AppContainer(private val context: Context) {
+    /** For helpers outside a screen (SizeSync). */
+    val appContext: Context get() = context
 
     /** App-wide scope. SupervisorJob + handler: one failed task never cancels the others or crashes the app. */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, t ->

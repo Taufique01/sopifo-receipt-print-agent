@@ -15,7 +15,8 @@ import com.sopifo.printagent.core.AppLog
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.quick.PdfDarkness
 import com.sopifo.printagent.quick.QuickPrintRenderer
-import com.sopifo.printagent.quick.QuickTarget
+import com.sopifo.printagent.quick.QuickLabelSize
+import com.sopifo.printagent.ui.print.SetupChecklist
 import com.sopifo.printagent.runs.ApiRunContent
 import com.sopifo.printagent.runs.NewRunItem
 import com.sopifo.printagent.ui.shell.AppSettings
@@ -61,16 +62,17 @@ class SopifoPrintService : PrintService() {
         val builder = PrinterInfo.Builder(generatePrinterId(PRINTER_LOCAL_ID), name, status)
             .setDescription(if (label != null) "Bluetooth label printer" else "Set up a label printer in Sopifo")
         if (withCapabilities) {
-            // The source app lays the page out as it designed it (A4 / 4×6); Sopifo shrinks it after.
+            // The label sizes first (inch + mm), the setup size selected; A4 / Letter for apps
+            // that only lay out on paper (Sopifo then shrinks the page to the setup size).
             val caps = PrinterCapabilitiesInfo.Builder(generatePrinterId(PRINTER_LOCAL_ID))
-                .addMediaSize(PrintAttributes.MediaSize.ISO_A4, true)
+            LABEL_MEDIA.forEach { (q, media) -> caps.addMediaSize(media, q == size) }
+            // A setup size not in the list (small stickers): A4 is the default, shrunk to it.
+            caps.addMediaSize(PrintAttributes.MediaSize.ISO_A4, LABEL_MEDIA.none { it.first == size })
                 .addMediaSize(PrintAttributes.MediaSize.NA_LETTER, false)
-                .addMediaSize(PrintAttributes.MediaSize("sopifo_4x6", "4 × 6 in", 4000, 6000), false)
                 .addResolution(PrintAttributes.Resolution("203dpi", "203 dpi", 203, 203), true)
                 .setColorModes(PrintAttributes.COLOR_MODE_MONOCHROME, PrintAttributes.COLOR_MODE_MONOCHROME)
                 .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-                .build()
-            builder.setCapabilities(caps)
+            builder.setCapabilities(caps.build())
         }
         return builder.build()
     }
@@ -82,8 +84,17 @@ class SopifoPrintService : PrintService() {
     override fun onPrintJobQueued(printJob: PrintJob) {
         val c = (application as SopifoApp).container
         printJob.start()
-        if (!WebSession.isLoggedIn(c)) {
-            printJob.fail(if (AppSettings.get(this).lang.value == "en") "Log in to Sopifo to print from other apps" else "অন্য অ্যাপ থেকে প্রিন্ট করতে Sopifo-তে লগ ইন করুন")
+        val settings = AppSettings.get(this)
+        val signals = WebSession.accountSignals(c)
+        val loggedIn = signals.values.any { it }
+        AppLog.i(TAG, "Print → Sopifo job", "logged_in" to loggedIn, "signals" to signals.toString(), "free_used" to settings.setup.value.freeServicePrints)
+        // A few prints work before logging in (enough to finish printer setup), then login.
+        if (!SetupChecklist.allowServicePrint(loggedIn, settings.setup.value.freeServicePrints)) {
+            AppLog.i(TAG, "Free print limit hit", "limit" to SetupChecklist.FREE_SERVICE_PRINTS)
+            printJob.fail(
+                if (settings.lang.value == "en") "${SetupChecklist.FREE_SERVICE_PRINTS} free prints used. Open Sopifo and log in to keep printing from other apps"
+                else "${SetupChecklist.FREE_SERVICE_PRINTS}টি ফ্রি প্রিন্ট শেষ। প্রিন্ট চালিয়ে যেতে Sopifo খুলে লগ ইন করুন",
+            )
             return
         }
         val file = File(cacheDir, "printservice-${System.currentTimeMillis()}.pdf")
@@ -100,12 +111,14 @@ class SopifoPrintService : PrintService() {
         c.scope.launch {
             try {
                 val label = c.printers.config(PrinterRole.LABEL) ?: throw IllegalStateException("No label printer: set one up in Sopifo")
-                val size = AppSettings.get(this@SopifoPrintService).labelSize.value
+                // The size picked in Android's print screen; A4 / Letter → the setup size.
+                val picked = printJob.info.attributes.mediaSize?.id
+                val size = LABEL_MEDIA.firstOrNull { it.second.id == picked }?.first ?: AppSettings.get(this@SopifoPrintService).labelSize.value
                 val renderer = QuickPrintRenderer(this@SopifoPrintService)
                 val uri = Uri.fromFile(file)
                 val pages = renderer.pdfPageCount(uri).coerceAtMost(MAX_PAGES)
                 val bitmaps = renderer.pdfPages(
-                    uri, 1, pages, QuickTarget(size.w, size.h),
+                    uri, 1, pages, size.target,
                     trim = true, fit = ImageFit.FIT, darkness = PdfDarkness.NORMAL, smart = true,
                 )
                 val items = bitmaps.mapIndexed { i, bmp ->
@@ -114,6 +127,8 @@ class SopifoPrintService : PrintService() {
                     NewRunItem(ApiRunContent.KIND_QUICK, saved.absolutePath, "quick", if (bitmaps.size > 1) "$title · ${i + 1}" else title)
                 }
                 c.runner.start(title, "print_service", PrinterRole.LABEL, items)
+                // Printer setup step 5 ✓ ("Print with Sopifo" works); counts the free prints.
+                settings.updateSetup { it.copy(printServiceUsed = true, freeServicePrints = if (loggedIn) it.freeServicePrints else it.freeServicePrints + 1) }
                 AppLog.i(TAG, "Print → Sopifo queued", "pages" to items.size, "printer" to label.name)
                 main.post { if (!printJob.isCompleted) printJob.complete() }
             } catch (e: Exception) {
@@ -126,6 +141,15 @@ class SopifoPrintService : PrintService() {
     }
 
     private companion object {
+        /** Label sizes in the print screen: "3 × 2 in · 76 × 51 mm" (mils = 1/1000 inch). */
+        val LABEL_MEDIA: List<Pair<QuickLabelSize, PrintAttributes.MediaSize>> = listOf(
+            QuickLabelSize.S3X2 to PrintAttributes.MediaSize("sopifo_S3X2", "3 × 2 in · 76 × 51 mm", 3000, 2000),
+            QuickLabelSize.S2X3 to PrintAttributes.MediaSize("sopifo_S2X3", "2 × 3 in · 50 × 75 mm", 2000, 3000),
+            QuickLabelSize.S2X3L to PrintAttributes.MediaSize("sopifo_S2X3L", "2 × 3 in landscape · 75 × 50 mm", 2953, 1969),
+            QuickLabelSize.S3X3 to PrintAttributes.MediaSize("sopifo_S3X3", "3 × 3 in · 76 × 76 mm", 3000, 3000),
+            QuickLabelSize.S3X4 to PrintAttributes.MediaSize("sopifo_S3X4", "3 × 4 in · 76 × 102 mm", 3000, 4000),
+            QuickLabelSize.S4X6 to PrintAttributes.MediaSize("sopifo_S4X6", "4 × 6 in · 102 × 152 mm", 4000, 6000),
+        )
         const val TAG = "SopifoPrintService"
         const val PRINTER_LOCAL_ID = "sopifo-label"
         const val MAX_PAGES = 20

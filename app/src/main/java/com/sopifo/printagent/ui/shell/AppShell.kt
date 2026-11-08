@@ -1,6 +1,17 @@
 package com.sopifo.printagent.ui.shell
 
 import android.Manifest
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -8,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalDrawerSheet
@@ -15,7 +27,9 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberDrawerState
-import com.sopifo.printagent.ui.print.PrintersHubScreen
+import com.sopifo.printagent.ui.print.PrinterSetupScreen
+import com.sopifo.printagent.ui.print.PrinterFacts
+import com.sopifo.printagent.ui.print.SetupChecklist
 import com.sopifo.printagent.ui.print.QuickStart
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -123,7 +137,7 @@ private val STORE_ITEMS = listOf(
     StoreItem("dashboard/products/new", Icons.Filled.Add) { it.addProduct },
     StoreItem("dashboard/products", AppIcons.Box) { it.products },
     StoreItem("pos", AppIcons.Cash) { it.pos },
-    StoreItem("#printers", AppIcons.Print) { it.printers },
+    StoreItem("dashboard/print", AppIcons.Print) { it.printingMenu },
     StoreItem("dashboard/customers", AppIcons.Users) { it.customers },
     StoreItem("dashboard/couriers", AppIcons.Truck) { it.couriers },
     StoreItem("dashboard/inventory", AppIcons.Barcode) { it.inventory },
@@ -163,7 +177,7 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
 
     var tab by rememberSaveable { mutableStateOf(ShellTab.HOME) }
     var storePath by rememberSaveable { mutableStateOf("dashboard/settings") }
-    val drawer = rememberDrawerState(DrawerValue.Closed)
+    var showStore by remember { mutableStateOf(false) }
     val station by settings.station.collectAsStateWithLifecycle()
     var overlay by remember { mutableStateOf<Overlay?>(null) }
     var quickMode by remember { mutableStateOf(QuickMode.PDF) }
@@ -174,8 +188,9 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
     LaunchedEffect(lang, deviceConfig?.deviceId) { WebSession.prepareCookies(c, lang, deviceConfig?.deviceId) }
 
     // Logged in with a shop but this phone isn't the shop's printer yet: connect it, no code.
-    LaunchedEffect(shop.slug, registered) {
-        if (shop.slug != null && registered == false && linkState == null) {
+    val userDisconnected by settings.userDisconnected.collectAsStateWithLifecycle()
+    LaunchedEffect(shop.slug, registered, userDisconnected) {
+        if (shop.slug != null && registered == false && !userDisconnected && linkState == null) {
             linkState = t.linking
             linkState = when (val r = WebSession.linkDevice(c)) {
                 WebSession.LinkResult.Linked -> {
@@ -243,7 +258,7 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
         })
     }
     fun openStore(path: String) {
-        scope.launch { drawer.close() }
+        showStore = false
         if (path == "#printers") {
             overlay = Overlay.PRINTERS
             return
@@ -265,8 +280,7 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
     val shared by SharedFile.item.collectAsStateWithLifecycle()
     LaunchedEffect(shared) { if (shared != null) { quickMode = if (shared!!.isPdf) QuickMode.PDF else QuickMode.IMAGE; overlay = Overlay.QUICK } }
 
-    BackHandler(enabled = overlay == null && drawer.isOpen) { scope.launch { drawer.close() } }
-    BackHandler(enabled = overlay == null && !drawer.isOpen) {
+    BackHandler(enabled = overlay == null && !showStore) {
         val wv = views[tab]
         when {
             wv != null && wv.canGoBack() -> wv.goBack()
@@ -281,30 +295,17 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
 
     val labelCfg = configs.firstOrNull { it.role == PrinterRole.LABEL }
     val chipCfg = labelCfg ?: configs.firstOrNull()
-    ModalNavigationDrawer(
-        drawerState = drawer,
-        gesturesEnabled = drawer.isOpen,
-        drawerContent = {
-            ModalDrawerSheet(Modifier.width(300.dp)) {
-                StoreDrawer(
-                    t = t,
-                    shopName = shop.name,
-                    lang = lang,
-                    station = station,
-                    onItem = ::openStore,
-                    onStation = settings::setStation,
-                    onLogOut = {
-                        scope.launch { drawer.close() }
-                        WebSession.logOut(c)
-                        settings.clearShop()
-                        views.values.forEach { it.destroy() }
-                        views.clear()
-                        onLoggedOut()
-                    },
-                )
-            }
-        },
-    ) {
+    // Printer setup carried over from before login; red when a needed step is missing.
+    val setupFlags by settings.setup.collectAsStateWithLifecycle()
+    val printerMissing = SetupChecklist.anyMissing(
+        SetupChecklist.states(
+            PrinterFacts(labelCfg != null, labelCfg?.let { printerStateGood(status[PrinterRole.LABEL]) }, configs.any { it.role == PrinterRole.RECEIPT }),
+            setupFlags,
+        ),
+    )
+    // One label size for the app and the website: send the one chosen before login, else read the website's.
+    LaunchedEffect(shop.slug) { if (shop.slug != null) SizeSync.sync(c) }
+    run {
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
@@ -316,7 +317,7 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
                         Text(shop.name ?: t.appName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, modifier = Modifier.testTag("shell_title"))
                     },
                     actions = {
-                        PrinterChip(chipCfg?.name, chipCfg?.let { printerStateGood(status[it.role]) }, t) { overlay = Overlay.PRINTERS }
+                        PrinterChip(chipCfg?.name, if (printerMissing) false else chipCfg?.let { printerStateGood(status[it.role]) }, t) { overlay = Overlay.PRINTERS }
                         IconButton(onClick = { openStore("dashboard/notifications") }, modifier = Modifier.testTag("shell_bell")) {
                             Icon(Icons.Filled.Notifications, contentDescription = t.notifications)
                         }
@@ -325,35 +326,17 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
                 )
             },
             bottomBar = {
-                // Like the website's phone bar: Overview · Content Studio · (＋) · Orders · Store.
-                NavigationBar(Modifier.height(68.dp)) {
-                    BarItem(ShellTab.HOME, tab, AppIcons.Dashboard, t.overview) { tab = it }
-                    BarItem(ShellTab.AI, tab, AppIcons.Sparkle, t.studio) { tab = it }
-                    NavigationBarItem(
-                        selected = tab == ShellTab.PLUS,
-                        onClick = {
-                            if (tab == ShellTab.PLUS) views[ShellTab.PLUS]?.loadUrl(WebSession.url(c, pathOf(ShellTab.PLUS)))
-                            tab = ShellTab.PLUS
-                        },
-                        icon = {
-                            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, shadowElevation = 4.dp, modifier = Modifier.size(46.dp)) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(if (shop.pos) AppIcons.Cash else Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
-                                }
-                            }
-                        },
-                        label = { Text(if (shop.pos) t.pos else t.add, maxLines = 1, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) },
-                        modifier = Modifier.testTag("tab_plus"),
-                    )
-                    BarItem(ShellTab.ORDERS, tab, AppIcons.Bag, t.orders) { tab = it }
-                    NavigationBarItem(
-                        selected = tab == ShellTab.STORE,
-                        onClick = { scope.launch { drawer.open() } },
-                        icon = { Icon(Icons.Filled.Menu, contentDescription = null) },
-                        label = { Text(t.store, maxLines = 1, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) },
-                        modifier = Modifier.testTag("tab_store"),
-                    )
-                }
+                ShellBottomBar(
+                    t = t,
+                    tab = tab,
+                    pos = shop.pos,
+                    storeOpen = showStore,
+                    onTab = { next ->
+                        if (next == ShellTab.PLUS && tab == ShellTab.PLUS) views[ShellTab.PLUS]?.loadUrl(WebSession.url(c, pathOf(ShellTab.PLUS)))
+                        tab = next
+                    },
+                    onStore = { showStore = true },
+                )
             },
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
@@ -369,14 +352,14 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
                     Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(msg, modifier = Modifier.weight(1f))
-                            if (msg != t.linking) TextButton(onClick = { linkState = null }) { Text(t.retry) }
+                            if (msg != t.linking) FilledTonalButton(onClick = { linkState = null }) { Text(t.retry) }
                         }
                     }
                 }
-                if (tab == ShellTab.HOME && !setupHidden && !(configs.isNotEmpty() && testPrinted && shop.courierCount > 0)) {
+                if (tab == ShellTab.HOME && !setupHidden && (printerMissing || shop.courierCount == 0)) {
                     SetupCard(
                         t,
-                        printerDone = configs.isNotEmpty(),
+                        printerDone = !printerMissing,
                         courierDone = shop.courierCount > 0,
                         onPrinter = { overlay = Overlay.PRINTERS },
                         onOpen = ::openStore,
@@ -387,12 +370,45 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
             }
         }
 
+        if (showStore) {
+            StoreSheet(
+                t = t,
+                current = if (tab == ShellTab.STORE) storePath else null,
+                station = station,
+                connected = registered == true,
+                onDisconnect = {
+                    showStore = false
+                    settings.setUserDisconnected(true)
+                    vm.unregister()
+                },
+                onConnect = {
+                    showStore = false
+                    linkState = null
+                    settings.setUserDisconnected(false)
+                },
+                onDismiss = { showStore = false },
+                onItem = ::openStore,
+                onStation = settings::setStation,
+                onLogOut = {
+                    showStore = false
+                    WebSession.logOut(c)
+                    settings.clearShop()
+                    views.values.forEach { it.destroy() }
+                    views.clear()
+                    onLoggedOut()
+                },
+            )
+        }
         overlay?.let { o ->
             when (o) {
                 Overlay.PRINTERS -> FullScreenPage(onClose = { overlay = null }) {
-                    PrintersHubScreen(
+                    PrinterSetupScreen(
                         onBack = { overlay = null },
                         onAdvanced = { overlay = Overlay.ADVANCED },
+                        onOpenWeb = { path -> overlay = null; openStore(path) },
+                        loggedIn = true,
+                        onLogin = {},
+                        onSignup = {},
                         onQuick = { q ->
                             quickMode = when (q) { QuickStart.PDF -> QuickMode.PDF; QuickStart.PHOTO -> QuickMode.IMAGE; QuickStart.TEXT -> QuickMode.TEXT }
                             overlay = Overlay.QUICK
@@ -469,57 +485,142 @@ fun PrinterChip(name: String?, good: Boolean?, t: S, onClick: () -> Unit) {
     }
 }
 
-/** Store side menu (like the website's sidebar) with print station, help and log out at the bottom. */
+/**
+ * Bottom bar like the website's phone bar: five equal columns, a small icon over a short label,
+ * the round (＋) / POS button raised in the middle. Sits above the phone's gesture bar.
+ */
 @Composable
-private fun StoreDrawer(
+private fun ShellBottomBar(t: S, tab: ShellTab, pos: Boolean, storeOpen: Boolean, onTab: (ShellTab) -> Unit, onStore: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .drawBehind { drawLine(Color.Black.copy(alpha = 0.08f), androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(size.width, 0f), 1.dp.toPx()) },
+    ) {
+        Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            BarCell(AppIcons.Dashboard, t.overview, tab == ShellTab.HOME && !storeOpen, "tab_home") { onTab(ShellTab.HOME) }
+            BarCell(AppIcons.Sparkle, t.studio, tab == ShellTab.AI && !storeOpen, "tab_ai") { onTab(ShellTab.AI) }
+            // The raised round button, like the website's (＋) / POS.
+            Column(
+                Modifier.weight(1f).fillMaxHeight().clickable(onClick = { onTab(ShellTab.PLUS) }).testTag("tab_plus"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.size(46.dp).offset(y = (-6).dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(if (pos) AppIcons.Cash else Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(26.dp))
+                    }
+                }
+                Text(
+                    if (pos) t.pos else t.add,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (tab == ShellTab.PLUS && !storeOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.offset(y = (-4).dp),
+                )
+            }
+            BarCell(AppIcons.Bag, t.orders, tab == ShellTab.ORDERS && !storeOpen, "tab_orders") { onTab(ShellTab.ORDERS) }
+            BarCell(AppIcons.Store, t.store, storeOpen || tab == ShellTab.STORE, "tab_store", onClick = onStore)
+        }
+        // The phone's gesture / button bar: the bar's labels never go under it.
+        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.BarCell(icon: ImageVector, label: String, active: Boolean, tag: String, onClick: () -> Unit) {
+    val color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Column(
+        Modifier.weight(1f).fillMaxHeight().clickable(onClick = onClick).testTag(tag),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(3.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = if (active) FontWeight.Bold else FontWeight.Medium, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * Store menu like the website's phone Store menu: a sheet from the bottom with a 3-column grid
+ * of bordered tiles (the open page filled), then print station, help and log out.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StoreSheet(
     t: S,
-    shopName: String?,
-    lang: String,
+    current: String?,
     station: Boolean,
+    connected: Boolean,
+    onDisconnect: () -> Unit,
+    onConnect: () -> Unit,
+    onDismiss: () -> Unit,
     onItem: (String) -> Unit,
     onStation: (Boolean) -> Unit,
     onLogOut: () -> Unit,
 ) {
     val context = LocalContext.current
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 12.dp).testTag("store_drawer")) {
-        Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(AppIcons.Store, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            Text(shopName ?: t.appName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-        STORE_ITEMS.forEach { item ->
-            NavigationDrawerItem(
-                label = { Text(item.label(t), fontWeight = FontWeight.SemiBold) },
-                icon = { Icon(item.icon, contentDescription = null) },
-                selected = false,
-                onClick = { onItem(item.path) },
-                modifier = Modifier.padding(horizontal = 10.dp).testTag("drawer_${item.path.substringAfterLast('/').trimStart('#')}"),
-            )
-        }
-        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-        Row(Modifier.padding(horizontal = 22.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(AppIcons.Station, contentDescription = null)
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(t.printStation, fontWeight = FontWeight.SemiBold)
-                Text(t.stationBody, style = MaterialTheme.typography.bodySmall)
+    var confirmDisconnect by remember { mutableStateOf(false) }
+    if (confirmDisconnect) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDisconnect = false },
+            title = { Text(t.disconnectPhone, fontWeight = FontWeight.Bold) },
+            text = { Text(t.disconnectConfirm) },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = { confirmDisconnect = false; onDisconnect() },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = StatusBad),
+                    modifier = Modifier.testTag("disconnect_confirm"),
+                ) { Text(t.disconnectPhone, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { androidx.compose.material3.FilledTonalButton(onClick = { confirmDisconnect = false }) { Text(t.back) } },
+        )
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), dragHandle = null) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp).navigationBarsPadding().testTag("store_menu")) {
+            Row(Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(t.store, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                IconButton(onClick = onDismiss, modifier = Modifier.testTag("store_close")) { Icon(Icons.Filled.Close, contentDescription = t.back) }
             }
-            Switch(checked = station, onCheckedChange = onStation, modifier = Modifier.testTag("station_switch"))
+            STORE_ITEMS.chunked(3).forEach { row ->
+                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { item -> StoreTile(item.icon, item.label(t), current == item.path, Modifier.weight(1f), "store_${item.path.substringAfterLast('/').trimStart('#')}") { onItem(item.path) } }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StoreTile(AppIcons.Station, t.printStation + if (station) " ✓" else "", station, Modifier.weight(1f), "store_station") { onStation(!station) }
+                if (connected) StoreTile(AppIcons.Bluetooth, t.disconnectPhone, false, Modifier.weight(1f), "store_disconnect", tint = StatusBad) { confirmDisconnect = true }
+                else StoreTile(AppIcons.Bluetooth, t.connectPhone, false, Modifier.weight(1f), "store_connect", tint = StatusGood, onClick = onConnect)
+            }
+            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StoreTile(AppIcons.Chat, t.help, false, Modifier.weight(1f), "store_help", tint = WhatsAppGreen) { SupportWhatsApp.open(context, "Menu") }
+                StoreTile(Icons.AutoMirrored.Filled.ExitToApp, t.logOut, false, Modifier.weight(1f), "store_logout", tint = StatusBad, onClick = onLogOut)
+            }
         }
-        NavigationDrawerItem(
-            label = { Text(t.help, fontWeight = FontWeight.SemiBold) },
-            icon = { Icon(AppIcons.Chat, contentDescription = null, tint = WhatsAppGreen) },
-            selected = false,
-            onClick = { SupportWhatsApp.open(context, "Menu") },
-            modifier = Modifier.padding(horizontal = 10.dp),
-        )
-        NavigationDrawerItem(
-            label = { Text(t.logOut, fontWeight = FontWeight.SemiBold, color = StatusBad) },
-            icon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = StatusBad) },
-            selected = false,
-            onClick = onLogOut,
-            modifier = Modifier.padding(horizontal = 10.dp).testTag("drawer_logout"),
-        )
-        Text(if (lang == "en") "Language: Settings" else "ভাষা: সেটিংস", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun StoreTile(icon: ImageVector, label: String, active: Boolean, modifier: Modifier, tag: String, tint: Color? = null, onClick: () -> Unit) {
+    val bg = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
+    val fg = if (active) MaterialTheme.colorScheme.onPrimary else tint ?: MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = bg,
+        border = BorderStroke(1.dp, if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        modifier = modifier.height(76.dp).clickable(onClick = onClick).testTag(tag),
+    ) {
+        Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.height(6.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = fg, textAlign = TextAlign.Center, maxLines = 2, lineHeight = 13.sp)
+        }
     }
 }
 
@@ -546,8 +647,9 @@ private fun SetupCard(
                 IconButton(onClick = onClose, modifier = Modifier.testTag("setup_close")) { Icon(Icons.Filled.Close, contentDescription = t.back) }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Step(AppIcons.Print, t.stepPrinter, printerDone, onPrinter)
-                Step(AppIcons.Truck, t.stepCourier, courierDone) { onOpen("dashboard/couriers") }
+                // Missing ones first, in red; done ones drop off.
+                if (!printerDone) Step(AppIcons.Print, t.stepPrinter, false, needed = true, onClick = onPrinter)
+                if (!courierDone) Step(AppIcons.Truck, t.stepCourier, false, needed = true) { onOpen("dashboard/couriers") }
                 Step(AppIcons.Tag, t.autoPrint, false) { onOpen("dashboard/settings") }
                 Step(AppIcons.Box, t.product, false) { onOpen("dashboard/products/new") }
                 Step(AppIcons.Cash, t.pos, false) { onOpen("pos") }
@@ -557,14 +659,14 @@ private fun SetupCard(
 }
 
 @Composable
-private fun Step(icon: ImageVector, label: String, done: Boolean, onClick: () -> Unit) {
+private fun Step(icon: ImageVector, label: String, done: Boolean, needed: Boolean = false, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = if (done) StatusGood.copy(alpha = 0.14f) else MaterialTheme.colorScheme.primaryContainer,
+        color = if (done) StatusGood.copy(alpha = 0.14f) else if (needed) StatusBad.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer,
         modifier = Modifier.width(84.dp).clickable(enabled = !done, onClick = onClick),
     ) {
         Column(Modifier.padding(vertical = 10.dp, horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(if (done) Icons.Filled.Check else icon, contentDescription = null, modifier = Modifier.size(28.dp), tint = if (done) StatusGood else MaterialTheme.colorScheme.primary)
+            Icon(if (done) Icons.Filled.Check else icon, contentDescription = null, modifier = Modifier.size(28.dp), tint = if (done) StatusGood else if (needed) StatusBad else MaterialTheme.colorScheme.primary)
             Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 1)
         }
     }
@@ -582,7 +684,7 @@ private fun OfflineCard(t: S, onRetry: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("📡", style = MaterialTheme.typography.displayMedium)
         Text(t.offline, style = MaterialTheme.typography.titleMedium)
-        OutlinedButton(onClick = onRetry) {
+        FilledTonalButton(onClick = onRetry) {
             Icon(Icons.Filled.Refresh, contentDescription = null)
             Text(" ${t.retry}")
         }

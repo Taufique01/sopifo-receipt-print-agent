@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -56,7 +57,7 @@ import com.sopifo.printagent.ui.pages.WebLinks
 import com.sopifo.printagent.ui.theme.AppIcons
 import com.sopifo.printagent.ui.theme.StatusGood
 
-enum class StartRoute { LOGIN, SIGNUP, PRINTERS, TRY }
+enum class StartRoute { LOGIN, SIGNUP, PRINTERS }
 
 /**
  * First open, no account: set up the printer and try prints. Everything else is behind
@@ -94,7 +95,6 @@ fun StartScreen(notice: String?, onOpen: (StartRoute) -> Unit) {
             }
         }
         BigAction(AppIcons.Print, t.setUpPrinter, primary = true, tag = "start_printers") { onOpen(StartRoute.PRINTERS) }
-        BigAction(AppIcons.Bolt, "🧪 ${t.tryPrints}", primary = false, tag = "start_try") { onOpen(StartRoute.TRY) }
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
         com.sopifo.printagent.ui.print.FullFeatures(onLogin = { onOpen(StartRoute.LOGIN) }, onSignup = { onOpen(StartRoute.SIGNUP) })
     }

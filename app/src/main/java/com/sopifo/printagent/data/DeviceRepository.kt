@@ -244,9 +244,10 @@ class DeviceRepository(
     }
 
     /** Returns true when support asked for this phone's logs. */
-    suspend fun sendHeartbeat(printerStatus: PrinterStatusPayload): Boolean {
+    suspend fun sendHeartbeat(printerStatus: PrinterStatusPayload, printers: List<com.sopifo.printagent.data.api.HeartbeatPrinter>? = null): Boolean {
         val logsRequested = apiProvider().heartbeat(
             HeartbeatRequest(
+                printers = printers,
                 batteryPercent = systemInfo.batteryPercent(),
                 printerStatus = printerStatus,
                 appVersion = systemInfo.appVersion,

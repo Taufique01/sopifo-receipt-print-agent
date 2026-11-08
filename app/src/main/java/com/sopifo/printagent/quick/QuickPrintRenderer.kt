@@ -22,21 +22,37 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-/** Where a quick print goes: a receipt roll's width, or a fixed label size (TSPL printers). */
-data class QuickTarget(val widthDots: Int, val heightDots: Int? = null) {
+/**
+ * Where a quick print goes: a receipt roll's width, or a fixed label size (TSPL printers).
+ * [rotate]: laid out [widthDots] × [heightDots], then turned 90° for the printer (2 × 3 in
+ * landscape: reads like 3 × 2 on 50 × 75 mm stock fed short edge first).
+ */
+data class QuickTarget(val widthDots: Int, val heightDots: Int? = null, val rotate: Boolean = false) {
     val isLabel: Boolean get() = heightDots != null
 }
 
 /** Label sizes offered for quick prints on a label (TSPL) printer, at 203 dpi. */
-enum class QuickLabelSize(val title: String, val w: Int, val h: Int) {
-    S40X30("40 × 30 mm", 320, 240),
-    S50X30("50 × 30 mm", 384, 240),
-    S58X40("58 × 40 mm", 384, 320),
-    S3X2("3 × 2 in", 609, 406),
-    S2X3("2 × 3 in (50 × 75 mm)", 400, 600),
-    S3X3("3 × 3 in (75 × 75 mm)", 600, 600),
-    S3X4("3 × 4 in (75 × 100 mm)", 600, 800),
+/**
+ * [webId] is the same size on the website (Cloud Print → Settings → label size), so the app and
+ * the dashboard share one setting.
+ */
+enum class QuickLabelSize(val title: String, val w: Int, val h: Int, val webId: String? = null, val rotate: Boolean = false) {
+    S40X30("40 × 30 mm", 320, 240, "40x30mm"),
+    S50X30("50 × 30 mm", 384, 240, "50x30mm"),
+    S58X40("58 × 40 mm", 384, 320, "58x40mm"),
+    S3X2("3 × 2 in", 609, 406, "3x2in"),
+    S2X3("2 × 3 in (50 × 75 mm)", 400, 600, "2x3in"),
+    S2X3L("2 × 3 in landscape", 600, 400, "2x3in-landscape", rotate = true),
+    S3X3("3 × 3 in (75 × 75 mm)", 600, 600, "3x3in"),
+    S3X4("3 × 4 in (75 × 100 mm)", 600, 800, "3x4in"),
     S4X6("4 × 6 in", 812, 1218),
+    ;
+
+    val target: QuickTarget get() = QuickTarget(w, h, rotate)
+
+    companion object {
+        fun fromWebId(id: String?): QuickLabelSize? = entries.firstOrNull { it.webId != null && it.webId == id }
+    }
 }
 
 /**
@@ -102,9 +118,10 @@ class QuickPrintRenderer(private val context: Context) {
                 bmp.eraseColor(Color.WHITE)
                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                 val content = if (trim) trimmed(bmp) else bmp
-                if (target.isLabel && smart) smartLabel(content, target, fit, darkness.cutoff)
+                val out = if (target.isLabel && smart) smartLabel(content, target, fit, darkness.cutoff)
                 else if (target.isLabel) placeOnLabel(content, target, fit, darkness.cutoff)
                 else onRoll(content, target, darkness.cutoff, stretch.factor)
+                turned(out, target)
             }
         }
     }
@@ -142,7 +159,16 @@ class QuickPrintRenderer(private val context: Context) {
      */
     fun smartFromBitmap(src: Bitmap, target: QuickTarget, trim: Boolean = true, cutoff: Int = PdfDarkness.NORMAL.cutoff): Bitmap {
         val content = if (trim) trimmed(src) else src
-        return if (target.isLabel) smartLabel(content, target, ImageFit.FIT, cutoff) else onRoll(content, target, cutoff, 1f)
+        return turned(if (target.isLabel) smartLabel(content, target, ImageFit.FIT, cutoff) else onRoll(content, target, cutoff, 1f), target)
+    }
+
+    /** A rotated size (2 × 3 in landscape): the finished label turned 90° for the printer. */
+    fun turned(src: Bitmap, target: QuickTarget): Bitmap {
+        if (!target.rotate || !target.isLabel) return src
+        val m = android.graphics.Matrix().apply { postRotate(90f) }
+        val out = Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, false)
+        if (out !== src) src.recycle()
+        return out
     }
 
     private fun smartLabel(src: Bitmap, target: QuickTarget, fit: ImageFit, cutoff: Int): Bitmap {

@@ -1,5 +1,6 @@
 package com.sopifo.printagent.ui.shell
 
+import com.sopifo.printagent.ui.print.SetupFlags
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
@@ -42,9 +43,63 @@ class AppSettings private constructor(context: Context) {
     )
     val labelSize: StateFlow<com.sopifo.printagent.quick.QuickLabelSize> = _labelSize.asStateFlow()
 
-    fun setLabelSize(size: com.sopifo.printagent.quick.QuickLabelSize) {
-        prefs.edit { putString(KEY_LABEL_SIZE, size.name) }
+    fun setLabelSize(size: com.sopifo.printagent.quick.QuickLabelSize, fromWebsite: Boolean = false) {
+        prefs.edit {
+            putString(KEY_LABEL_SIZE, size.name)
+            // Chosen here: the website (Cloud Print label size) gets it at the next chance.
+            if (!fromWebsite) putBoolean(KEY_SIZE_PENDING, true)
+        }
         _labelSize.value = size
+    }
+
+    /** The label size still has to be sent to the website (chosen before login, or offline). */
+    val sizePendingSync: Boolean get() = prefs.getBoolean(KEY_SIZE_PENDING, false)
+    fun sizeSynced() = prefs.edit { putBoolean(KEY_SIZE_PENDING, false) }
+
+    private fun readSetup() = SetupFlags(
+        sizeConfirmed = prefs.getBoolean(KEY_SIZE_OK, false),
+        testPrinted = prefs.getBoolean(KEY_TEST_OK, false),
+        testFailed = prefs.getBoolean(KEY_TEST_FAILED, false),
+        receiptSkipped = prefs.getBoolean(KEY_RECEIPT_SKIPPED, false),
+        labelSkipped = prefs.getBoolean(KEY_LABEL_SKIPPED, false),
+        printServiceUsed = prefs.getBoolean(KEY_SERVICE_USED, false),
+        firstSetupDone = prefs.getBoolean(KEY_FIRST_DONE, false),
+        freeServicePrints = prefs.getInt(KEY_FREE_PRINTS, 0),
+    )
+
+    private val _setup = MutableStateFlow(readSetup())
+    /** Printer setup progress (kept on the phone, carried over at login). */
+    val setup: StateFlow<SetupFlags> = _setup.asStateFlow()
+
+    fun updateSetup(change: (SetupFlags) -> SetupFlags) {
+        val next = change(_setup.value)
+        prefs.edit {
+            putBoolean(KEY_SIZE_OK, next.sizeConfirmed)
+            putBoolean(KEY_TEST_OK, next.testPrinted)
+            putBoolean(KEY_TEST_FAILED, next.testFailed)
+            putBoolean(KEY_RECEIPT_SKIPPED, next.receiptSkipped)
+            putBoolean(KEY_LABEL_SKIPPED, next.labelSkipped)
+            putBoolean(KEY_SERVICE_USED, next.printServiceUsed)
+            putBoolean(KEY_FIRST_DONE, next.firstSetupDone)
+            putInt(KEY_FREE_PRINTS, next.freeServicePrints)
+        }
+        _setup.value = next
+        _testPrinted.value = next.testPrinted
+    }
+
+    /**
+     * Logged in on the website inside the app. Kept here too because the print service runs on
+     * its own (often in a fresh process) and can't rely on the web view's cookies being on disk.
+     */
+    val loggedIn: Boolean get() = prefs.getBoolean(KEY_LOGGED_IN, false)
+    fun setLoggedIn(value: Boolean) = prefs.edit(commit = true) { putBoolean(KEY_LOGGED_IN, value) }
+
+    /** "Disconnect phone" in the Store menu: no automatic reconnect at login until "Connect phone". */
+    private val _userDisconnected = MutableStateFlow(prefs.getBoolean(KEY_USER_DISCONNECTED, false))
+    val userDisconnected: StateFlow<Boolean> = _userDisconnected.asStateFlow()
+    fun setUserDisconnected(value: Boolean) {
+        prefs.edit { putBoolean(KEY_USER_DISCONNECTED, value) }
+        _userDisconnected.value = value
     }
 
     fun setLang(value: String) {
@@ -68,10 +123,7 @@ class AppSettings private constructor(context: Context) {
         _shop.value = facts
     }
 
-    fun setTestPrinted() {
-        prefs.edit { putBoolean(KEY_TEST_OK, true) }
-        _testPrinted.value = true
-    }
+    fun setTestPrinted() = updateSetup { it.copy(testPrinted = true, testFailed = false) }
 
     /** Signing out of the dashboard forgets the shop facts (not the printers or language). */
     fun clearShop() = setShop(ShopFacts())
@@ -85,6 +137,16 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_COURIERS = "courier_count"
         private const val KEY_TEST_OK = "test_printed"
         private const val KEY_LABEL_SIZE = "label_size"
+        private const val KEY_LOGGED_IN = "logged_in"
+        private const val KEY_USER_DISCONNECTED = "user_disconnected"
+        private const val KEY_SIZE_PENDING = "label_size_pending"
+        private const val KEY_SIZE_OK = "setup_size_ok"
+        private const val KEY_TEST_FAILED = "setup_test_failed"
+        private const val KEY_RECEIPT_SKIPPED = "setup_receipt_skipped"
+        private const val KEY_LABEL_SKIPPED = "setup_label_skipped"
+        private const val KEY_SERVICE_USED = "setup_service_used"
+        private const val KEY_FIRST_DONE = "setup_first_done"
+        private const val KEY_FREE_PRINTS = "service_free_prints"
 
         @Volatile private var instance: AppSettings? = null
 

@@ -112,6 +112,8 @@ class BluetoothPrinterTransport(
         @Volatile private var held = false
         /** Bytes of the last write, to drain before closing a held link. */
         @Volatile private var lastBytes = 0
+        /** Kept-open link: the pause before the next print (see HeldPacer). */
+        private val pacer = HeldPacer(android.os.SystemClock::elapsedRealtime, ::drainDelayMs)
 
         override fun holdOpen(hold: Boolean) {
             held = hold
@@ -126,6 +128,12 @@ class BluetoothPrinterTransport(
             // The whole send runs on one thread, paced with sleeps, under one hard time limit: a
             // write that never returns fails the print and frees the printer instead of holding it.
             var offset = 0
+            var waited = 0L
+            if (held) {
+                waited = pacer.waitMs()
+                if (waited > 0) delay(waited)
+            }
+            val sendStart = android.os.SystemClock.elapsedRealtime()
             try {
                 HardTimeout.run(SendSpeed.writeTimeoutMs(data.size, speedKbps), "write", onTimeout = { socket.close() }) {
                     val out = socket.outputStream
@@ -145,6 +153,12 @@ class BluetoothPrinterTransport(
                     if (!held) Thread.sleep(drainDelayMs(data.size))
                 }
                 lastBytes = data.size
+                val now = android.os.SystemClock.elapsedRealtime()
+                // The printer is still printing / cutting what it just got: the next print waits.
+                if (held) pacer.sent(data.size)
+                com.sopifo.printagent.core.AppLog.i(
+                    "BtTransport", "Sent", "bytes" to data.size, "waited_ms" to waited, "send_ms" to (now - sendStart), "held" to held,
+                )
             } catch (e: IOException) {
                 // Nothing reached the printer (a kept-open link that went stale): safe to reconnect and resend.
                 if (offset == 0) throw PrintException(PrintFailure.CONNECT_FAILED, "Link lost: ${e.message}", e)
