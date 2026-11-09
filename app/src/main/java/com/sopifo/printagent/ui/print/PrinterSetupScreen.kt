@@ -192,7 +192,7 @@ fun PrinterSetupScreen(
                                 SetupStep.SIZE -> if (states[step] == StepState.DONE) "${settings.labelSize.value.title.substringBefore(" (")} · ${label?.labelGapMm ?: 0} mm" else "—"
                                 SetupStep.TEST -> if (states[step] == StepState.DONE) t.printedOk else "—"
                                 SetupStep.RECEIPT -> receipt?.let { "${it.name} · ${it.paperWidthMm ?: 58} mm" } ?: t.skipped
-                                SetupStep.SERVICE -> if (states[step] == StepState.DONE) t.itWorked else t.notTurnedOn
+                                SetupStep.SERVICE -> if (flags.printServiceUsed) t.itWorked else t.serviceOptional
                             }
                         },
                         onFix = { fixStep = it },

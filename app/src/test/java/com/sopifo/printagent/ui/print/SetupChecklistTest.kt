@@ -17,8 +17,17 @@ class SetupChecklistTest {
         assertEquals(StepState.MISSING, s[SetupStep.SIZE])
         assertEquals(StepState.MISSING, s[SetupStep.TEST])
         assertEquals(StepState.SKIPPED, s[SetupStep.RECEIPT])
-        assertEquals(StepState.MISSING, s[SetupStep.SERVICE])
+        // Print → Sopifo (other apps) is optional: green even before it was ever used.
+        assertEquals(StepState.DONE, s[SetupStep.SERVICE])
         assertEquals(SetupStep.LABEL, SetupChecklist.firstMissing(s))
+    }
+
+    @Test fun printFromOtherAppsIsOptionalAndNeverRed() {
+        val f = SetupFlags(sizeConfirmed = true, testPrinted = true, printServiceUsed = false)
+        val s = SetupChecklist.states(label, f)
+        assertEquals(StepState.DONE, s[SetupStep.SERVICE])
+        // Everything needed is done: nothing is left red.
+        assertEquals(null, SetupChecklist.firstMissing(s))
     }
 
     @Test fun finishedSetupIsAllGreenOrGrey() {

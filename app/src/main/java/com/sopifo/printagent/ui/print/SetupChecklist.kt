@@ -57,7 +57,8 @@ object SetupChecklist {
             SetupStep.SIZE to if (p.hasLabel && f.sizeConfirmed) StepState.DONE else StepState.MISSING,
             SetupStep.TEST to if (f.testPrinted && !f.testFailed) StepState.DONE else StepState.MISSING,
             SetupStep.RECEIPT to if (p.hasReceipt) StepState.DONE else StepState.SKIPPED,
-            SetupStep.SERVICE to if (f.printServiceUsed) StepState.DONE else StepState.MISSING,
+            // Print → Sopifo from other apps is optional: green whether or not it was used yet.
+            SetupStep.SERVICE to StepState.DONE,
         )
     }
 

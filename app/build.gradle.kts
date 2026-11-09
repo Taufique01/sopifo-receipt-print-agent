@@ -23,8 +23,8 @@ android {
         applicationId = "com.sopifo.printagent"
         minSdk = 26
         targetSdk = 37
-        versionCode = 29
-        versionName = "2.1.10"
+        versionCode = 30
+        versionName = "2.1.11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
