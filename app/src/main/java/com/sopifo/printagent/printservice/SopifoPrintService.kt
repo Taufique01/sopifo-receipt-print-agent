@@ -21,6 +21,11 @@ import com.sopifo.printagent.ui.shell.AppSettings
 import com.sopifo.printagent.ui.shell.WebSession
 import com.sopifo.printagent.quick.ImageFit
 import kotlinx.coroutines.launch
+import com.sopifo.printagent.data.db.RunState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import com.sopifo.printagent.runs.PrintRunner
 import com.sopifo.printagent.service.ServiceController
 import kotlinx.coroutines.runBlocking
@@ -140,12 +145,13 @@ class SopifoPrintService : PrintService() {
         // The size picked in Android's print screen; A4 / Letter → the setup size.
         val picked = printJob.info.attributes.mediaSize?.id
         val size = LABEL_MEDIA.firstOrNull { it.second.id == picked }?.first ?: settings.labelSize.value
-        // Answer Android now (no minutes of "Printing…"): keep the app alive, then "done". The
-        // pages are made and printed as a Sopifo print run; its notification shows the outcome.
+        // The job stays open with Android until the label has printed (or failed): while a job
+        // is open Android keeps Sopifo running, so it can't be frozen half way in the background.
+        // The 30 s printer limit, 5 pages and a quick scan keep that to a few seconds.
         ServiceController.start(this, "print_service")
-        printJob.complete()
         AppLog.i(TAG, "Print → Sopifo taken", "printer" to label.name)
         c.scope.launch {
+            var outcome = Outcome.FAILED
             try {
                 val renderer = QuickPrintRenderer(this@SopifoPrintService)
                 val uri = Uri.fromFile(file)
@@ -160,19 +166,41 @@ class SopifoPrintService : PrintService() {
                     bmp.recycle()
                     NewRunItem(ApiRunContent.KIND_QUICK, saved.absolutePath, "quick", if (bitmaps.size > 1) "$title · ${i + 1}" else title)
                 }
-                c.runner.start(title, PrintRunner.SOURCE_OTHER_APPS, PrinterRole.LABEL, items)
+                val runId = c.runner.start(title, PrintRunner.SOURCE_OTHER_APPS, PrinterRole.LABEL, items)
                 if (total > pages) PrintRefusal.show(this@SopifoPrintService, PrintRefusal.Reason.PAGES_CUT, settings.lang.value, "$pages/$total")
                 // Printer setup step 5 ✓ ("Print with Sopifo" works); counts the free prints.
                 settings.updateSetup { it.copy(printServiceUsed = true, freeServicePrints = if (loggedIn) it.freeServicePrints else it.freeServicePrints + 1) }
                 AppLog.i(TAG, "Print → Sopifo queued", "pages" to items.size, "printer" to label.name)
+                val ended = c.runner.awaitFinish(runId, JOB_OPEN_MAX_MS)
+                outcome = when {
+                    // Still printing after JOB_OPEN_MAX_MS (a long queue): let Android go; the run carries on.
+                    ended == null -> Outcome.DONE
+                    ended.state == RunState.DONE && ended.failed == 0 -> Outcome.DONE
+                    // Sopifo's own notice says why (the run result); no extra Android "Printer error".
+                    else -> Outcome.CANCEL
+                }
+                AppLog.i(TAG, "Print → Sopifo ended", "state" to (ended?.state ?: "still_running"), "printed" to (ended?.printed ?: -1))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 AppLog.w(TAG, "Print → Sopifo failed", e)
                 PrintRefusal.show(this@SopifoPrintService, PrintRefusal.Reason.OTHER, settings.lang.value, e.message)
+                outcome = Outcome.CANCEL
             } finally {
                 file.delete()
+                withContext(NonCancellable + Dispatchers.Main) {
+                    runCatching {
+                        when (outcome) {
+                            Outcome.DONE -> if (!printJob.isCompleted) printJob.complete()
+                            else -> if (!printJob.isCancelled && !printJob.isCompleted) printJob.cancel()
+                        }
+                    }
+                }
             }
         }
     }
+
+    private enum class Outcome { DONE, CANCEL, FAILED }
 
     private class NoLabelPrinter : IllegalStateException("No label printer: set one up in Sopifo → Printers")
 
@@ -188,5 +216,7 @@ class SopifoPrintService : PrintService() {
         )
         const val TAG = "SopifoPrintService"
         const val PRINTER_LOCAL_ID = "sopifo-label"
+        /** Longest Android's job stays open (a long queue): then "done", and the run carries on. */
+        const val JOB_OPEN_MAX_MS = 3 * 60_000L
     }
 }

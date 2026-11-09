@@ -303,4 +303,23 @@ class PrintRunnerTest {
         advanceUntilIdle()
         assertEquals(60_000L, testScheduler.currentTime)
     }
+
+    // Print → Sopifo keeps Android's job open until the run ends (Android keeps the app alive meanwhile).
+    @Test
+    fun awaitFinishReturnsTheEndedRun() = runTest {
+        val r = runner()
+        val id = r.start("Page", PrintRunner.SOURCE_OTHER_APPS, PrinterRole.LABEL, items("a", "b"))
+        val ended = r.awaitFinish(id, timeoutMs = 60_000)
+        assertEquals(RunState.DONE, ended!!.state)
+        assertEquals(2, ended.printed)
+    }
+
+    @Test
+    fun awaitFinishGivesUpAfterItsTimeout() = runTest {
+        printer.unreachable = true
+        printer.connectMs = 20_000
+        val r = runner()
+        val id = r.start("Order labels", "orders", PrinterRole.LABEL, items("a"))
+        assertEquals(null, r.awaitFinish(id, timeoutMs = 5_000))
+    }
 }

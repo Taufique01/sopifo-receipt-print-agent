@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -106,6 +107,19 @@ class PrintRunner(
         )
         launch(id)
         return id
+    }
+
+    /**
+     * Waits until [runId] has ended (done or stopped) and returns it; null if it is still going
+     * after [timeoutMs] (or is unknown). Print → Sopifo keeps Android's job open meanwhile.
+     */
+    suspend fun awaitFinish(runId: String, timeoutMs: Long): PrintRunEntity? = withTimeoutOrNull(timeoutMs) {
+        var ended: PrintRunEntity? = null
+        while (ended == null) {
+            val run = dao.getRun(runId) ?: return@withTimeoutOrNull null
+            if (run.state != RunState.RUNNING) ended = run else delay(AWAIT_POLL_MS)
+        }
+        ended
     }
 
     /** Prints the run's failed, incomplete and not-printed items again. */
@@ -299,6 +313,7 @@ class PrintRunner(
         const val PREPARE_AHEAD = 3
         /** Reconnects after the link drops mid-run before giving up. */
         const val MAX_RECONNECTS = 3
+        const val AWAIT_POLL_MS = 250L
         /** Runs from Android's Print → Sopifo (Chrome and other apps). */
         const val SOURCE_OTHER_APPS = "print_service"
         /** How long a print from another app may try to reach the printer. */

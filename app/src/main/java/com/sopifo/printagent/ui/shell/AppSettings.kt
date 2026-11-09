@@ -38,8 +38,8 @@ class AppSettings private constructor(context: Context) {
 
     /** The label printer's paper (smart shrink, Print → Sopifo, Quick print start here). */
     private val _labelSize = MutableStateFlow(
-        runCatching { com.sopifo.printagent.quick.QuickLabelSize.valueOf(prefs.getString(KEY_LABEL_SIZE, "S3X2")!!) }
-            .getOrDefault(com.sopifo.printagent.quick.QuickLabelSize.S3X2),
+        runCatching { com.sopifo.printagent.quick.QuickLabelSize.valueOf(prefs.getString(KEY_LABEL_SIZE, "S2X3")!!) }
+            .getOrDefault(com.sopifo.printagent.quick.QuickLabelSize.S2X3),
     )
     val labelSize: StateFlow<com.sopifo.printagent.quick.QuickLabelSize> = _labelSize.asStateFlow()
 

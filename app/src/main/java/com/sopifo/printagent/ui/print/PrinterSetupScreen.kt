@@ -532,6 +532,7 @@ private fun ChecklistView(
             }
         }
     }
+    BatteryCard(t)
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Tile(AppIcons.Tag, t.testLabel, Modifier.weight(1f).testTag("check_test_label"), onClick = onTestLabel)
         Tile(AppIcons.Receipt, t.testReceipt, Modifier.weight(1f).testTag("check_test_receipt"), onClick = onTestReceipt)
@@ -565,6 +566,45 @@ private fun ChecklistView(
  * Create shop / Log in: a bold, motivating card (what a free shop gives, one big "Start now"),
  * then "Already have an account? Log in" as the second, tinted button.
  */
+/**
+ * Shown while Android may stop Sopifo in the background (battery optimisation on): prints from
+ * Chrome / other apps can then stop half way. "Allow" asks Android; App settings for brands
+ * (Xiaomi, Oppo, Vivo…) that hide it elsewhere. Hidden once Sopifo is unrestricted.
+ */
+@android.annotation.SuppressLint("BatteryLife")
+@Composable
+private fun BatteryCard(t: S) {
+    val context = LocalContext.current
+    fun unrestricted() = runCatching {
+        context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+    }.getOrDefault(true)
+    var ok by remember { mutableStateOf(unrestricted()) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { ok = unrestricted() }
+    if (ok) return
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f),
+        modifier = Modifier.fillMaxWidth().testTag("battery_card"),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("🔋 ${t.batteryTitle}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+            Text(t.batteryBody, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    runCatching {
+                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}")))
+                    }
+                }, modifier = Modifier.testTag("battery_allow")) { Text(t.batteryAllow, fontWeight = FontWeight.Bold) }
+                FilledTonalButton(onClick = {
+                    runCatching {
+                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}")))
+                    }
+                }) { Text(t.batteryMore) }
+            }
+        }
+    }
+}
+
 /** This phone's link to the shop: whether the shop's prints come to this phone. */
 class PhoneLink(val connected: Boolean, val onDisconnect: () -> Unit, val onConnect: () -> Unit)
 
