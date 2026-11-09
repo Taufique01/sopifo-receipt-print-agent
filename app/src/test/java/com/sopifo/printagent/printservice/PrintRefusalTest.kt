@@ -31,3 +31,21 @@ class PrintRefusalTest {
         assertEquals("Something went wrong. Try again.", PrintRefusal.notice(PrintRefusal.Reason.OTHER, "en", " ").text)
     }
 }
+
+class PrintServicePolicyTest {
+    @Test fun jobsFromBeforeAnInstallAreLeftovers() {
+        val now = 10 * 60_000L
+        assertTrue(PrintRefusal.isLeftover(createdAt = now - 3 * 60_000L, now = now, alreadyStarted = false))
+        assertTrue(PrintRefusal.isLeftover(createdAt = now - 1_000L, now = now, alreadyStarted = true))
+        assertTrue(!PrintRefusal.isLeftover(createdAt = now - 5_000L, now = now, alreadyStarted = false))
+        // Unknown creation time: not treated as old.
+        assertTrue(!PrintRefusal.isLeftover(createdAt = 0L, now = now, alreadyStarted = false))
+    }
+
+    @Test fun longDocumentsPrintTheFirstFivePagesAndSaySo() {
+        assertEquals(5, PrintRefusal.MAX_PAGES)
+        val n = PrintRefusal.notice(PrintRefusal.Reason.PAGES_CUT, "en", "5/18")
+        assertEquals("Sopifo printed the first 5 pages", n.title)
+        assertTrue(n.text.startsWith("That had 18 pages."))
+    }
+}

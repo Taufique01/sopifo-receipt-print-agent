@@ -32,7 +32,8 @@ import kotlin.math.roundToInt
  */
 object SmartShrink {
     private const val TAG = "SmartShrink"
-    private const val SCAN_TIMEOUT_S = 8L
+    /** Short: a print waits for each scan (no barcode found in time → plain shrink). */
+    private const val SCAN_TIMEOUT_S = 3L
 
     data class Found(val value: String, val format: BarcodeFormat, val box: Rect)
 

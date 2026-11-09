@@ -15,8 +15,9 @@ class PrinterManagerPort(private val printers: PrinterManager) : RunPrinterPort 
 
     override suspend fun <T> session(
         printer: PrinterConfigEntity,
+        shouldContinue: () -> Boolean,
         block: suspend (write: suspend (ByteArray) -> Unit) -> T,
-    ): T = printers.session(printer) { connection -> block { bytes -> connection.write(bytes) } }
+    ): T = printers.session(printer, shouldContinue = shouldContinue) { connection -> block { bytes -> connection.write(bytes) } }
 }
 
 /**

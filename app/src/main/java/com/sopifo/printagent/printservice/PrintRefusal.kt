@@ -16,11 +16,20 @@ import com.sopifo.printagent.ui.print.SetupChecklist
  * posts the real reason with one button that fixes it (Log in / Open Printers / Open Sopifo).
  */
 object PrintRefusal {
-    enum class Reason { LOGIN, NO_LABEL_PRINTER, OTHER }
+    enum class Reason { LOGIN, NO_LABEL_PRINTER, OTHER, PAGES_CUT }
+
+    /** Labels from other apps: at most this many pages (a courier label is 1–2 pages). */
+    const val MAX_PAGES = 5
+
+    /** A job Android hands over again after an install / update (or one already started): cancel it quietly. */
+    fun isLeftover(createdAt: Long, now: Long, alreadyStarted: Boolean): Boolean =
+        alreadyStarted || (createdAt > 0 && now - createdAt > LEFTOVER_MS)
+
+    const val LEFTOVER_MS = 2 * 60_000L
 
     data class Notice(val title: String, val text: String, val button: String, val open: String?)
 
-    /** The words and button for [reason] ([detail]: the error for OTHER). Pure, for tests. */
+    /** The words and button for [reason] ([detail]: the error for OTHER; "printed/total" for PAGES_CUT). Pure, for tests. */
     fun notice(reason: Reason, lang: String, detail: String? = null): Notice {
         val en = lang == "en"
         val title = if (en) "Sopifo couldn't print" else "Sopifo প্রিন্ট করতে পারেনি"
@@ -39,6 +48,16 @@ object PrintRefusal {
                 if (en) "Open Printers" else "প্রিন্টার খুলুন",
                 MainActivity.OPEN_PRINTERS,
             )
+            Reason.PAGES_CUT -> {
+                val total = detail?.substringAfter('/')?.toIntOrNull() ?: 0
+                Notice(
+                    if (en) "Sopifo printed the first $MAX_PAGES pages" else "Sopifo প্রথম ${MAX_PAGES}টি পেজ প্রিন্ট করেছে",
+                    if (en) "That had $total pages. Labels from other apps print up to $MAX_PAGES pages; for more, use Quick print in Sopifo."
+                    else "এতে ${total}টি পেজ ছিল। অন্য অ্যাপ থেকে লেবেলে সর্বোচ্চ ${MAX_PAGES}টি পেজ প্রিন্ট হয়; বেশি হলে Sopifo-র কুইক প্রিন্ট ব্যবহার করুন।",
+                    if (en) "Open Sopifo" else "Sopifo খুলুন",
+                    null,
+                )
+            }
             Reason.OTHER -> Notice(
                 title,
                 detail?.takeIf { it.isNotBlank() }?.take(200) ?: if (en) "Something went wrong. Try again." else "সমস্যা হয়েছে। আবার চেষ্টা করুন।",

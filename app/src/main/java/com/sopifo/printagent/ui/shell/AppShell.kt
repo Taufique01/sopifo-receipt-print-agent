@@ -230,6 +230,8 @@ fun AppShell(
     }
 
     val views = remember { mutableStateMapOf<ShellTab, WebView>() }
+    /** Bumped on every page load, so [onPos] re-reads the shown tab's address. */
+    var pageTick by remember { mutableStateOf(0) }
     val host = remember {
         object : WebHost {
             override fun openPrintSheet() { overlay = Overlay.PRINTERS }
@@ -250,6 +252,7 @@ fun AppShell(
             override fun onPage(url: String) {
                 // Signed out on the website (session ended): back to the start screen.
                 val path = runCatching { Uri.parse(url).path.orEmpty() }.getOrDefault("")
+                pageTick++
                 // POS / orders open: connect the printer now so the first print is instant.
                 c.phonePrinter.warmFor(path)
                 if (path.startsWith("/sign-in") && !WebSession.isLoggedIn(c)) {
@@ -320,38 +323,46 @@ fun AppShell(
     )
     // One label size for the app and the website: send the one chosen before login, else read the website's.
     LaunchedEffect(shop.slug) { if (shop.slug != null) SizeSync.sync(c) }
+    // The POS gets the whole screen: no top or bottom bar (its own ← goes back to the dashboard).
+    val onPos = remember(tab, pageTick) {
+        views[tab]?.url?.let { runCatching { Uri.parse(it).path.orEmpty() }.getOrDefault("") }?.startsWith("/pos") == true
+    }
     run {
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
-                // Slim, one line: shop · printer chip · bell · help.
-                TopAppBar(
-                    expandedHeight = 52.dp,
-                    title = {
-                        Text(shop.name ?: t.appName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, modifier = Modifier.testTag("shell_title"))
-                    },
-                    actions = {
-                        PrinterChip(chipCfg?.name, if (printerMissing) false else chipCfg?.let { printerStateGood(status[it.role]) }, t) { overlay = Overlay.PRINTERS }
-                        IconButton(onClick = { openStore("dashboard/notifications") }, modifier = Modifier.testTag("shell_bell")) {
-                            Icon(Icons.Filled.Notifications, contentDescription = t.notifications)
-                        }
-                        HelpIcon(page = "App: ${pathOf(tab)}")
-                    },
-                )
+                if (!onPos) {
+                    // Slim, one line: shop · printer chip · bell · help.
+                    TopAppBar(
+                        expandedHeight = 52.dp,
+                        title = {
+                            Text(shop.name ?: t.appName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, modifier = Modifier.testTag("shell_title"))
+                        },
+                        actions = {
+                            PrinterChip(chipCfg?.name, if (printerMissing) false else chipCfg?.let { printerStateGood(status[it.role]) }, t) { overlay = Overlay.PRINTERS }
+                            IconButton(onClick = { openStore("dashboard/notifications") }, modifier = Modifier.testTag("shell_bell")) {
+                                Icon(Icons.Filled.Notifications, contentDescription = t.notifications)
+                            }
+                            HelpIcon(page = "App: ${pathOf(tab)}")
+                        },
+                    )
+                }
             },
             bottomBar = {
-                ShellBottomBar(
-                    t = t,
-                    tab = tab,
-                    pos = shop.pos,
-                    storeOpen = showStore,
-                    onTab = { next ->
-                        if (next == ShellTab.PLUS && tab == ShellTab.PLUS) views[ShellTab.PLUS]?.loadUrl(WebSession.url(c, pathOf(ShellTab.PLUS)))
-                        tab = next
-                    },
-                    onStore = { showStore = true },
-                )
+                if (!onPos) {
+                    ShellBottomBar(
+                        t = t,
+                        tab = tab,
+                        pos = shop.pos,
+                        storeOpen = showStore,
+                        onTab = { next ->
+                            if (next == ShellTab.PLUS && tab == ShellTab.PLUS) views[ShellTab.PLUS]?.loadUrl(WebSession.url(c, pathOf(ShellTab.PLUS)))
+                            tab = next
+                        },
+                        onStore = { showStore = true },
+                    )
+                }
             },
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {

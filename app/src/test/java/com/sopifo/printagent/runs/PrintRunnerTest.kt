@@ -79,12 +79,25 @@ class FakePrinter : RunPrinterPort {
     val written = mutableListOf<String>()
     var sessions = 0
     private var writes = 0
+    /** How long each connect attempt takes before it fails (unreachable printer). */
+    var connectMs = 0L
 
     override suspend fun config(role: PrinterRole) = if (configured) printer else null
 
-    override suspend fun <T> session(printer: PrinterConfigEntity, block: suspend (write: suspend (ByteArray) -> Unit) -> T): T {
+    override suspend fun <T> session(
+        printer: PrinterConfigEntity,
+        shouldContinue: () -> Boolean,
+        block: suspend (write: suspend (ByteArray) -> Unit) -> T,
+    ): T {
         sessions++
-        if (unreachable) throw PrintException(PrintFailure.CONNECT_FAILED, "Printer not reachable")
+        if (unreachable) {
+            // Like the printer manager: up to 3 connect attempts, each checking it may go on.
+            for (attempt in 1..3) {
+                if (!shouldContinue()) break
+                kotlinx.coroutines.delay(connectMs)
+            }
+            throw PrintException(PrintFailure.CONNECT_FAILED, "Printer not reachable")
+        }
         return block { bytes ->
             writes++
             if (dropAlways || writes in dropOnWrite) throw PrintException(PrintFailure.WRITE_FAILED, "Write failed")
@@ -266,5 +279,28 @@ class PrintRunnerTest {
         assertEquals(RunState.DONE, dao.runs[first]!!.state)
         assertEquals(RunState.DONE, dao.runs[second]!!.state)
         assertEquals(listOf("a", "b"), printer.written)
+    }
+
+    // Print → Sopifo (Chrome, other apps): no minutes of "Printing…" when the printer is off.
+    @Test
+    fun printsFromOtherAppsStopTryingTheirPrinterAfter30Seconds() = runTest {
+        printer.unreachable = true
+        printer.connectMs = 20_000
+        val r = runner()
+        val id = r.start("Page", PrintRunner.SOURCE_OTHER_APPS, PrinterRole.LABEL, items("a"))
+        advanceUntilIdle()
+        assertTrue("took ${testScheduler.currentTime} ms", testScheduler.currentTime <= 40_000)
+        assertEquals(RunState.STOPPED, dao.runs[id]!!.state)
+        assertEquals(PrintRunner.NOT_REACHABLE, dao.runs[id]!!.message)
+    }
+
+    @Test
+    fun otherRunsKeepAllTheirConnectAttempts() = runTest {
+        printer.unreachable = true
+        printer.connectMs = 20_000
+        val r = runner()
+        r.start("Order labels", "orders", PrinterRole.LABEL, items("a"))
+        advanceUntilIdle()
+        assertEquals(60_000L, testScheduler.currentTime)
     }
 }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -69,7 +70,9 @@ fun StartScreen(notice: String?, onOpen: (StartRoute) -> Unit) {
     val settings = AppSettings.get(LocalContext.current)
     val lang by settings.lang.collectAsStateWithLifecycle()
     Column(
-        Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp).testTag("start_screen"),
+        // Nav-bar padding + extra room at the end: the Log in button no longer touches the bottom.
+        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 32.dp).testTag("start_screen"),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -80,14 +83,21 @@ fun StartScreen(notice: String?, onOpen: (StartRoute) -> Unit) {
             FilterChip(selected = lang == "en", onClick = { settings.setLang("en") }, label = { Text("EN") }, modifier = Modifier.testTag("lang_en"))
         }
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(shape = RoundedCornerShape(26.dp), color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(88.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(AppIcons.Print, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(50.dp))
-                }
+            // The Sopifo logo (bag + name); on a white pill in dark mode so the dark name stays readable.
+            val dark = androidx.compose.foundation.isSystemInDarkTheme()
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = if (dark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Transparent,
+                modifier = Modifier.testTag("start_logo"),
+            ) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(com.sopifo.printagent.R.drawable.sopifo_logo),
+                    contentDescription = t.appName,
+                    modifier = Modifier.padding(horizontal = if (dark) 14.dp else 0.dp, vertical = if (dark) 8.dp else 0.dp).height(54.dp),
+                )
             }
-            Spacer(Modifier.height(10.dp))
-            Text(t.appName, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black)
-            Text(t.tagline, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            Text(t.tagline, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         notice?.let {
             Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth()) {

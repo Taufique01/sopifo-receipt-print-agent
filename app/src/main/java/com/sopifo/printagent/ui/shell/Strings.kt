@@ -173,7 +173,7 @@ data class S(
 
 val BN = S(
     appName = "Sopifo",
-    tagline = "লেবেল ও রসিদ প্রিন্ট",
+    tagline = "কুরিয়ার লেবেল, বারকোড ও রসিদ প্রিন্ট",
     findPrinter = "প্রিন্টার খুঁজুন",
     printFile = "PDF / ছবি প্রিন্ট",
     logIn = "লগ ইন",
@@ -338,7 +338,7 @@ val BN = S(
 
 val EN = S(
     appName = "Sopifo",
-    tagline = "Print labels & receipts",
+    tagline = "Courier labels, barcodes & receipt printing",
     findPrinter = "Find my printer",
     printFile = "Print PDF / photo",
     logIn = "Log in",

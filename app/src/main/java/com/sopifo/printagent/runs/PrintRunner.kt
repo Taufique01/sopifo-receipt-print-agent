@@ -30,8 +30,15 @@ import java.util.concurrent.ConcurrentHashMap
 interface RunPrinterPort {
     suspend fun config(role: PrinterRole): PrinterConfigEntity?
 
-    /** Opens the printer (with retries) and lets [block] write; throws PrintException if unreachable. */
-    suspend fun <T> session(printer: PrinterConfigEntity, block: suspend (write: suspend (ByteArray) -> Unit) -> T): T
+    /**
+     * Opens the printer (with retries while [shouldContinue]) and lets [block] write; throws
+     * PrintException if unreachable.
+     */
+    suspend fun <T> session(
+        printer: PrinterConfigEntity,
+        shouldContinue: () -> Boolean,
+        block: suspend (write: suspend (ByteArray) -> Unit) -> T,
+    ): T
 }
 
 /** Turns an item into printer bytes: fetches the order / parcel image, or reads a quick print. */
@@ -81,6 +88,8 @@ class PrintRunner(
     /** One run at a time: printers are shared, and runs queue behind each other in order. */
     private val gate = Mutex()
     private val stopRequested: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    /** When each run last printed a page (or started): the other-apps time limit counts from it. */
+    private val progressAt = ConcurrentHashMap<String, Long>()
     /** Runs started in this process: printing now, or queued behind the one that is. */
     private val active: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
@@ -174,15 +183,20 @@ class PrintRunner(
         }
         AppLog.i(TAG, "Run started", "run" to runId, "title" to run.title)
         var reconnects = 0
+        // Print → Sopifo from other apps: at most OTHER_APPS_REACH_MS trying to reach the printer
+        // (counted again from each printed page), then stop and say why: no minutes of "Printing…".
+        val limited = run.source == SOURCE_OTHER_APPS
+        progressAt[runId] = clock()
+        fun inTime() = !limited || clock() - (progressAt[runId] ?: 0L) < OTHER_APPS_REACH_MS
         while (true) {
             val pending = dao.items(runId).filter { it.status == RunItemStatus.PENDING }
             if (pending.isEmpty()) return finish(runId, RunState.DONE, null)
             try {
-                printers.session(printer) { write -> printItems(run, printer, pending, write) }
+                printers.session(printer, ::inTime) { write -> printItems(run, printer, pending, write) }
                 // Everything left was sent (or failed to load); loop once more to finish.
             } catch (e: Disconnected) {
-                if (++reconnects > MAX_RECONNECTS) {
-                    val reason = "The printer disconnected and didn't come back"
+                if (++reconnects > MAX_RECONNECTS || !inTime()) {
+                    val reason = if (limited) NOT_REACHABLE else "The printer disconnected and didn't come back"
                     notPrinted(runId, reason)
                     return finish(runId, RunState.STOPPED, reason)
                 }
@@ -193,7 +207,7 @@ class PrintRunner(
                 return finish(runId, RunState.STOPPED, "Stopped")
             } catch (e: PrintException) {
                 // Couldn't connect at all (after the printer manager's own retries).
-                val reason = friendly(e)
+                val reason = if (limited && e.failure == PrintFailure.CONNECT_FAILED) NOT_REACHABLE else friendly(e)
                 notPrinted(runId, reason)
                 return finish(runId, RunState.STOPPED, reason)
             }
@@ -242,6 +256,7 @@ class PrintRunner(
 
     private suspend fun setItem(run: PrintRunEntity, item: PrintRunItemEntity, status: RunItemStatus, reason: String?) {
         dao.setItem(run.id, item.idx, status, reason, clock())
+        if (status == RunItemStatus.PRINTED) progressAt[run.id] = clock()
         if (status == RunItemStatus.SENDING) return
         val (printed, failed) = counts(run.id)
         dao.setRun(run.id, RunState.RUNNING, printed, failed, null, clock())
@@ -257,6 +272,7 @@ class PrintRunner(
     }
 
     private suspend fun finish(runId: String, state: RunState, message: String?) {
+        progressAt.remove(runId)
         val (printed, failed) = counts(runId)
         dao.setRun(runId, state, printed, failed, message, clock())
         dao.getRun(runId)?.let(notifier::finished)
@@ -283,6 +299,11 @@ class PrintRunner(
         const val PREPARE_AHEAD = 3
         /** Reconnects after the link drops mid-run before giving up. */
         const val MAX_RECONNECTS = 3
+        /** Runs from Android's Print → Sopifo (Chrome and other apps). */
+        const val SOURCE_OTHER_APPS = "print_service"
+        /** How long a print from another app may try to reach the printer. */
+        const val OTHER_APPS_REACH_MS = 30_000L
+        const val NOT_REACHABLE = "Printer not reachable: is it on, and near this phone? Check it isn't connected to another phone or PC."
         /** Results go to the server every few items, and at the end. */
         const val REPORT_EVERY = 10
         private const val KEEP_MS = 30L * 24 * 60 * 60 * 1000
