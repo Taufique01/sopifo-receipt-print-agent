@@ -37,7 +37,7 @@ data class PrinterFacts(
  */
 object SetupChecklist {
     /** Prints through Android's Print menu before logging in (3, raised by 10 on 2026-11-08). */
-    const val FREE_SERVICE_PRINTS = 13
+    const val FREE_SERVICE_PRINTS = 23
 
     fun freeLeft(freeUsed: Int) = (FREE_SERVICE_PRINTS - freeUsed).coerceAtLeast(0)
 

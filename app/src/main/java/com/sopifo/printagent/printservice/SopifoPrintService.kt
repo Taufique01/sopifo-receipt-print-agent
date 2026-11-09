@@ -91,6 +91,7 @@ class SopifoPrintService : PrintService() {
         // A few prints work before logging in (enough to finish printer setup), then login.
         if (!SetupChecklist.allowServicePrint(loggedIn, settings.setup.value.freeServicePrints)) {
             AppLog.i(TAG, "Free print limit hit", "limit" to SetupChecklist.FREE_SERVICE_PRINTS)
+            PrintRefusal.show(this, PrintRefusal.Reason.LOGIN, settings.lang.value)
             printJob.fail(
                 if (settings.lang.value == "en") "${SetupChecklist.FREE_SERVICE_PRINTS} free prints used. Open Sopifo and log in to keep printing from other apps"
                 else "${SetupChecklist.FREE_SERVICE_PRINTS}টি ফ্রি প্রিন্ট শেষ। প্রিন্ট চালিয়ে যেতে Sopifo খুলে লগ ইন করুন",
@@ -104,13 +105,14 @@ class SopifoPrintService : PrintService() {
             fd.close()
         } catch (e: Exception) {
             AppLog.w(TAG, "Couldn't read the print document", e)
+            PrintRefusal.show(this, PrintRefusal.Reason.OTHER, settings.lang.value, e.message)
             printJob.fail(e.message ?: "Couldn't read the document")
             return
         }
         val title = printJob.info.label.ifBlank { "Print" }
         c.scope.launch {
             try {
-                val label = c.printers.config(PrinterRole.LABEL) ?: throw IllegalStateException("No label printer: set one up in Sopifo")
+                val label = c.printers.config(PrinterRole.LABEL) ?: throw NoLabelPrinter()
                 // The size picked in Android's print screen; A4 / Letter → the setup size.
                 val picked = printJob.info.attributes.mediaSize?.id
                 val size = LABEL_MEDIA.firstOrNull { it.second.id == picked }?.first ?: AppSettings.get(this@SopifoPrintService).labelSize.value
@@ -133,12 +135,16 @@ class SopifoPrintService : PrintService() {
                 main.post { if (!printJob.isCompleted) printJob.complete() }
             } catch (e: Exception) {
                 AppLog.w(TAG, "Print → Sopifo failed", e)
+                val reason = if (e is NoLabelPrinter) PrintRefusal.Reason.NO_LABEL_PRINTER else PrintRefusal.Reason.OTHER
+                PrintRefusal.show(this@SopifoPrintService, reason, settings.lang.value, e.message)
                 main.post { if (!printJob.isFailed) printJob.fail(e.message ?: "Print failed") }
             } finally {
                 file.delete()
             }
         }
     }
+
+    private class NoLabelPrinter : IllegalStateException("No label printer: set one up in Sopifo → Printers")
 
     private companion object {
         /** Label sizes in the print screen: "3 × 2 in · 76 × 51 mm" (mils = 1/1000 inch). */

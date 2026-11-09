@@ -98,5 +98,8 @@ class MainActivity : FragmentActivity() {
         /** Which page to open (from a notification). */
         const val EXTRA_OPEN = "open"
         const val OPEN_ACTIVITY = "activity"
+        /** Print → Sopifo refused a print: open Printers / the login screen. */
+        const val OPEN_PRINTERS = "printers"
+        const val OPEN_LOGIN = "login"
     }
 }

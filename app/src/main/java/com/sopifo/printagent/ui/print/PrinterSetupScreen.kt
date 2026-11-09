@@ -106,6 +106,8 @@ fun PrinterSetupScreen(
     onOpenWeb: ((String) -> Unit)? = null,
     onLogin: () -> Unit,
     onSignup: () -> Unit,
+    /** Logged in: this phone's link to the shop (Disconnect / Connect phone). */
+    phone: PhoneLink? = null,
     vm: PrintersViewModel = viewModel(),
 ) {
     val t = strings()
@@ -200,6 +202,7 @@ fun PrinterSetupScreen(
                         onAdvanced = onAdvanced,
                         onRunAgain = { guideStep = SetupStep.LABEL },
                         onOpenWeb = onOpenWeb,
+                        phone = phone,
                     )
                 }
                 Spacer(Modifier.height(16.dp))
@@ -490,6 +493,7 @@ private fun ChecklistView(
     onAdvanced: () -> Unit,
     onRunAgain: () -> Unit,
     onOpenWeb: ((String) -> Unit)?,
+    phone: PhoneLink?,
 ) {
     val titles = mapOf(
         SetupStep.LABEL to t.stepLabelTitle,
@@ -547,7 +551,7 @@ private fun ChecklistView(
             Tile(AppIcons.Receipt, "🕘 ${t.historyLink}", Modifier.weight(1f).testTag("open_history")) { onOpenWeb("dashboard/print?tab=history") }
         }
     }
-    ShareLogsButton()
+    if (phone != null) PhoneLinkButton(t, phone)
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         FilledTonalButton(onClick = onRunAgain, modifier = Modifier.weight(1f).testTag("run_again")) { Text(t.runAgain) }
         FilledTonalButton(onClick = onAdvanced, modifier = Modifier.weight(1f)) {
@@ -561,6 +565,48 @@ private fun ChecklistView(
  * Create shop / Log in: a bold, motivating card (what a free shop gives, one big "Start now"),
  * then "Already have an account? Log in" as the second, tinted button.
  */
+/** This phone's link to the shop: whether the shop's prints come to this phone. */
+class PhoneLink(val connected: Boolean, val onDisconnect: () -> Unit, val onConnect: () -> Unit)
+
+@Composable
+private fun PhoneLinkButton(t: S, phone: PhoneLink) {
+    var confirm by remember { mutableStateOf(false) }
+    if (confirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text(t.disconnectPhone, fontWeight = FontWeight.Bold) },
+            text = { Text(t.disconnectConfirm) },
+            confirmButton = {
+                Button(
+                    onClick = { confirm = false; phone.onDisconnect() },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = StatusBad),
+                    modifier = Modifier.testTag("disconnect_confirm"),
+                ) { Text(t.disconnectPhone, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { FilledTonalButton(onClick = { confirm = false }) { Text(t.back) } },
+        )
+    }
+    if (phone.connected) {
+        OutlinedButton(
+            onClick = { confirm = true },
+            border = androidx.compose.foundation.BorderStroke(1.dp, StatusBad.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth().height(50.dp).testTag("printers_disconnect"),
+        ) {
+            Icon(AppIcons.Bluetooth, contentDescription = null, tint = StatusBad)
+            Text("  ${t.disconnectPhone}", color = StatusBad, fontWeight = FontWeight.Bold)
+        }
+    } else {
+        Button(
+            onClick = phone.onConnect,
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = StatusGood),
+            modifier = Modifier.fillMaxWidth().height(50.dp).testTag("printers_connect"),
+        ) {
+            Icon(AppIcons.Bluetooth, contentDescription = null)
+            Text("  ${t.connectPhone}", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
 @Composable
 fun FullFeatures(onLogin: () -> Unit, onSignup: () -> Unit) {
     val t = strings()
@@ -616,24 +662,4 @@ fun FullFeatures(onLogin: () -> Unit, onSignup: () -> Unit) {
             Text(t.haveAccount, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         }
     }
-}
-
-/** Support: the app's log file through WhatsApp / any app (works logged out, no server). */
-@Composable
-private fun ShareLogsButton() {
-    val context = LocalContext.current
-    val c = (context.applicationContext as com.sopifo.printagent.SopifoApp).container
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var busy by remember { mutableStateOf(false) }
-    FilledTonalButton(
-        onClick = {
-            busy = true
-            scope.launch {
-                runCatching { com.sopifo.printagent.core.LogShare.send(context, c.logUploader.buildBundle()) }
-                busy = false
-            }
-        },
-        enabled = !busy,
-        modifier = Modifier.fillMaxWidth().testTag("share_logs"),
-    ) { Text("📤 Logs → WhatsApp") }
 }

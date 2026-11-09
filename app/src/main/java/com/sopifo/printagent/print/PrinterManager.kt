@@ -122,7 +122,8 @@ class PrinterManager(
         warmFor(printer)?.let { link ->
             try {
                 setStatus(printer, PrinterState.CONNECTED)
-                return@withLock block(link.connection).also { link.lastUsed = clock() }
+                val connection = ReconnectingLink(printer, link.connection)
+                return@withLock block(connection).also { warmFor(printer)?.lastUsed = clock() }
             } catch (e: PrintException) {
                 dropWarm(printer)
                 setStatus(printer, PrinterState.DISCONNECTED)
@@ -141,6 +142,37 @@ class PrinterManager(
             connection.close()
             closed(printer)
         }
+    }
+
+    /**
+     * The kept-open link as [session] hands it out. A link that died while the app was in the
+     * background (printer slept, Android dropped the socket) fails its first write before any
+     * byte went out; this reconnects once and sends that write again, as [printFast] does.
+     * Print → Sopifo from Chrome / other apps and pushed jobs used to fail there with
+     * "I/O error" / "not connected". The caller holds the printer's lock.
+     */
+    private inner class ReconnectingLink(
+        private val printer: PrinterConfigEntity,
+        private var current: PrinterConnection,
+    ) : PrinterConnection {
+        private var reconnected = false
+
+        override suspend fun write(data: ByteArray) {
+            try {
+                current.write(data)
+            } catch (e: PrintException) {
+                if (e.failure != PrintFailure.CONNECT_FAILED || reconnected) throw e
+                reconnected = true
+                AppLog.w(TAG, "Kept-open link was dead; reconnecting", e, "role" to printer.role)
+                dropWarm(printer)
+                current = ensureWarm(printer).connection
+                current.write(data)
+            }
+        }
+
+        override fun close() = current.close()
+
+        override fun holdOpen(hold: Boolean) = current.holdOpen(hold)
     }
 
     private suspend fun open(

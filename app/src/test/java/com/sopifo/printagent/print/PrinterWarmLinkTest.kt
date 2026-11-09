@@ -86,6 +86,35 @@ class PrinterWarmLinkTest {
         assertEquals(listOf("a", "b"), written)
     }
 
+    // Print → Sopifo (Chrome, other apps) and jobs go through session(): a link that died while
+    // the app was in the background used to fail with "I/O error" / "not connected".
+    @Test fun sessionOnAStaleLinkReconnectsOnce() = runTest {
+        manager.warmUp(PrinterRole.RECEIPT)
+        failNext = PrintFailure.CONNECT_FAILED
+        manager.session(printer) { connection ->
+            connection.write("p1".toByteArray())
+            connection.write("p2".toByteArray())
+        }
+        assertEquals(2, opens)
+        assertEquals(listOf("p1", "p2"), written)
+        // The new link is kept open for the next print.
+        manager.print(printer, "job".toByteArray())
+        assertEquals(2, opens)
+    }
+
+    @Test fun sessionWriteFailureAfterBytesWentOutIsNotResent() = runTest {
+        manager.warmUp(PrinterRole.RECEIPT)
+        failNext = PrintFailure.WRITE_FAILED
+        try {
+            manager.print(printer, "job".toByteArray())
+            fail("expected a print failure")
+        } catch (e: PrintException) {
+            assertEquals(PrintFailure.WRITE_FAILED, e.failure)
+        }
+        assertEquals(emptyList<String>(), written)
+        assertEquals(1, opens)
+    }
+
     @Test fun writeFailureAfterBytesWentOutIsNotResent() = runTest {
         manager.printFast(printer, "a".toByteArray())
         failNext = PrintFailure.WRITE_FAILED

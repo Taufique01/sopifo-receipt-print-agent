@@ -108,6 +108,14 @@ fun AppRoot(
         HelpScreen(onClose = { showHelp = false })
         return
     }
+    // A Print → Sopifo notice was tapped while logged out: Log in / Printers.
+    LaunchedEffect(openRequest, loggedIn, station) {
+        if (loggedIn || station) return@LaunchedEffect
+        when (openRequest) {
+            MainActivity.OPEN_LOGIN -> { route = StartRoute.LOGIN; onOpenHandled() }
+            MainActivity.OPEN_PRINTERS -> { route = StartRoute.PRINTERS; onOpenHandled() }
+        }
+    }
     // Share → Sopifo needs an account (full features): the start screen says so; after login it opens.
     val shared by SharedFile.item.collectAsStateWithLifecycle()
     var advanced by rememberSaveable { mutableStateOf(false) }
@@ -121,8 +129,9 @@ fun AppRoot(
         loggedIn -> {
             // Already logged in from an earlier session: make sure the print service knows.
             LaunchedEffect(Unit) { WebSession.rememberLogin(container) }
-            AppShell(vm, onLoggedOut = {
-                AppSettings.get(context).setLoggedIn(false)
+            // Only the Store menu's Log out forgets the login (WebSession.logOut); a web session
+            // that ended just shows the start screen, so Print → Sopifo keeps printing.
+            AppShell(vm, openRequest = openRequest, onOpenHandled = onOpenHandled, onLoggedOut = {
                 loggedIn = false
             })
         }

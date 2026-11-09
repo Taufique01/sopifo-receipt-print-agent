@@ -28,6 +28,8 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberDrawerState
 import com.sopifo.printagent.ui.print.PrinterSetupScreen
+import com.sopifo.printagent.ui.print.PhoneLink
+import com.sopifo.printagent.ui.MainActivity
 import com.sopifo.printagent.ui.print.PrinterFacts
 import com.sopifo.printagent.ui.print.SetupChecklist
 import com.sopifo.printagent.ui.print.QuickStart
@@ -158,7 +160,13 @@ private val STORE_ITEMS = listOf(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
+fun AppShell(
+    vm: AgentViewModel,
+    onLoggedOut: () -> Unit,
+    /** From a tapped notification (Print → Sopifo refused a print): open Printers. */
+    openRequest: String? = null,
+    onOpenHandled: () -> Unit = {},
+) {
     val context = LocalContext.current
     val activity = context as Activity
     val c = (context.applicationContext as SopifoApp).container
@@ -180,6 +188,13 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
     var showStore by remember { mutableStateOf(false) }
     val station by settings.station.collectAsStateWithLifecycle()
     var overlay by remember { mutableStateOf<Overlay?>(null) }
+    LaunchedEffect(openRequest) {
+        when (openRequest) {
+            MainActivity.OPEN_PRINTERS -> { overlay = Overlay.PRINTERS; onOpenHandled() }
+            // Already logged in: nothing to do.
+            MainActivity.OPEN_LOGIN -> onOpenHandled()
+        }
+    }
     var quickMode by remember { mutableStateOf(QuickMode.PDF) }
     var setupHidden by rememberSaveable { mutableStateOf(false) }
     var linkState by remember { mutableStateOf<String?>(null) }
@@ -375,17 +390,6 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
                 t = t,
                 current = if (tab == ShellTab.STORE) storePath else null,
                 station = station,
-                connected = registered == true,
-                onDisconnect = {
-                    showStore = false
-                    settings.setUserDisconnected(true)
-                    vm.unregister()
-                },
-                onConnect = {
-                    showStore = false
-                    linkState = null
-                    settings.setUserDisconnected(false)
-                },
                 onDismiss = { showStore = false },
                 onItem = ::openStore,
                 onStation = settings::setStation,
@@ -409,6 +413,18 @@ fun AppShell(vm: AgentViewModel, onLoggedOut: () -> Unit) {
                         loggedIn = true,
                         onLogin = {},
                         onSignup = {},
+                        // Disconnect / Connect phone lives here (moved from the Store menu).
+                        phone = PhoneLink(
+                            connected = registered == true,
+                            onDisconnect = {
+                                settings.setUserDisconnected(true)
+                                vm.unregister()
+                            },
+                            onConnect = {
+                                linkState = null
+                                settings.setUserDisconnected(false)
+                            },
+                        ),
                         onQuick = { q ->
                             quickMode = when (q) { QuickStart.PDF -> QuickMode.PDF; QuickStart.PHOTO -> QuickMode.IMAGE; QuickStart.TEXT -> QuickMode.TEXT }
                             overlay = Overlay.QUICK
@@ -556,31 +572,12 @@ private fun StoreSheet(
     t: S,
     current: String?,
     station: Boolean,
-    connected: Boolean,
-    onDisconnect: () -> Unit,
-    onConnect: () -> Unit,
     onDismiss: () -> Unit,
     onItem: (String) -> Unit,
     onStation: (Boolean) -> Unit,
     onLogOut: () -> Unit,
 ) {
     val context = LocalContext.current
-    var confirmDisconnect by remember { mutableStateOf(false) }
-    if (confirmDisconnect) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { confirmDisconnect = false },
-            title = { Text(t.disconnectPhone, fontWeight = FontWeight.Bold) },
-            text = { Text(t.disconnectConfirm) },
-            confirmButton = {
-                androidx.compose.material3.Button(
-                    onClick = { confirmDisconnect = false; onDisconnect() },
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = StatusBad),
-                    modifier = Modifier.testTag("disconnect_confirm"),
-                ) { Text(t.disconnectPhone, fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = { androidx.compose.material3.FilledTonalButton(onClick = { confirmDisconnect = false }) { Text(t.back) } },
-        )
-    }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), dragHandle = null) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp).navigationBarsPadding().testTag("store_menu")) {
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -593,17 +590,47 @@ private fun StoreSheet(
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StoreTile(AppIcons.Station, t.printStation + if (station) " ✓" else "", station, Modifier.weight(1f), "store_station") { onStation(!station) }
-                if (connected) StoreTile(AppIcons.Bluetooth, t.disconnectPhone, false, Modifier.weight(1f), "store_disconnect", tint = StatusBad) { confirmDisconnect = true }
-                else StoreTile(AppIcons.Bluetooth, t.connectPhone, false, Modifier.weight(1f), "store_connect", tint = StatusGood, onClick = onConnect)
-            }
-            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StoreTile(AppIcons.Chat, t.help, false, Modifier.weight(1f), "store_help", tint = WhatsAppGreen) { SupportWhatsApp.open(context, "Menu") }
-                StoreTile(Icons.AutoMirrored.Filled.ExitToApp, t.logOut, false, Modifier.weight(1f), "store_logout", tint = StatusBad, onClick = onLogOut)
+            // One shorter joined bar: print station · help · log out.
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) {
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                    BarCell(AppIcons.Station, t.printStation + if (station) " ✓" else "", if (station) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, station, Modifier.weight(1f), "store_station") { onStation(!station) }
+                    BarDivider()
+                    BarCell(AppIcons.Chat, t.help, WhatsAppGreen, false, Modifier.weight(1f), "store_help") { SupportWhatsApp.open(context, "Menu") }
+                    BarDivider()
+                    BarCell(Icons.AutoMirrored.Filled.ExitToApp, t.logOut, StatusBad, false, Modifier.weight(1f), "store_logout", onClick = onLogOut)
+                }
             }
         }
     }
+}
+
+/** A cell of the Store menu's joined bottom bar: icon and label side by side. */
+@Composable
+private fun BarCell(icon: ImageVector, label: String, tint: Color, active: Boolean, modifier: Modifier, tag: String, onClick: () -> Unit) {
+    Row(
+        modifier = modifier
+            .fillMaxHeight()
+            .background(if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp)
+            .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun BarDivider() {
+    Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 10.dp).background(MaterialTheme.colorScheme.outlineVariant))
 }
 
 @Composable
