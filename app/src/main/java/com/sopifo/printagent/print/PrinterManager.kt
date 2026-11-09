@@ -68,6 +68,12 @@ class PrinterManager(
     private val warmScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     @Volatile private var idleWatch: Job? = null
 
+    /** When each printer was last known reachable or not (probe, or a print): [probeStale] skips it until stale. */
+    private val lastChecked = ConcurrentHashMap<String, Long>()
+    private fun checked(printer: PrinterConfigEntity) {
+        lastChecked[printer.macAddress.uppercase()] = clock()
+    }
+
     /** When each printer's last connection closed (clock ms), for [settle]. */
     private val lastClosed = ConcurrentHashMap<String, Long>()
 
@@ -123,7 +129,7 @@ class PrinterManager(
             try {
                 setStatus(printer, PrinterState.CONNECTED)
                 val connection = ReconnectingLink(printer, link.connection)
-                return@withLock block(connection).also { warmFor(printer)?.lastUsed = clock() }
+                return@withLock block(connection).also { warmFor(printer)?.lastUsed = clock(); checked(printer) }
             } catch (e: PrintException) {
                 dropWarm(printer)
                 setStatus(printer, PrinterState.DISCONNECTED)
@@ -134,7 +140,7 @@ class PrinterManager(
         val connection = open(printer, attempts, shouldContinue)
         try {
             setStatus(printer, PrinterState.CONNECTED)
-            block(connection)
+            block(connection).also { checked(printer) }
         } catch (e: PrintException) {
             setStatus(printer, PrinterState.DISCONNECTED)
             throw e
@@ -230,6 +236,7 @@ class PrinterManager(
                 PrinterState.DISCONNECTED
             }
             setStatus(printer, state)
+            checked(printer)
             // Back off every role on this printer, or a shared printer is probed once per role.
             val roles = rolesSharing(printer)
             if (state == PrinterState.DISCONNECTED) roles.forEach(::recordProbeFailure) else roles.forEach { probeBackoff.remove(it) }
@@ -251,6 +258,30 @@ class PrinterManager(
                 // A printer shared by both roles is probed once; probe() updates both roles.
                 val mac = printerDao.get(role)?.macAddress?.uppercase()
                 if (mac != null && !probed.add(mac)) continue
+                probe(role)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                AppLog.w(TAG, "Probe failed", e, "role" to role)
+            }
+        }
+    }
+
+    /**
+     * The heartbeat's check (every 5 min): connects only to printers not checked (probed or
+     * printed to) for [maxAgeMs], so an idle phone doesn't wake Bluetooth and the printer every
+     * 5 minutes. App open, Bluetooth on and link events still probe at once ([probeAll]).
+     */
+    suspend fun probeStale(maxAgeMs: Long) {
+        val seen = HashSet<String>()
+        for (role in PrinterRole.entries) {
+            try {
+                val printer = printerDao.get(role) ?: continue
+                val mac = printer.macAddress.uppercase()
+                if (!seen.add(mac)) continue
+                val last = lastChecked[mac]
+                if (last != null && clock() - last < maxAgeMs) continue
+                if (!probeDue(role)) continue
                 probe(role)
             } catch (e: CancellationException) {
                 throw e
@@ -354,6 +385,7 @@ class PrinterManager(
             }
         }
         setStatus(printer, PrinterState.CONNECTED)
+        checked(printer)
     }
 
     /** Closes every kept-open link (app going to the background for long, Bluetooth off). */

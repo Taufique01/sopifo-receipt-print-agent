@@ -91,13 +91,17 @@ class PendingSyncWorker(context: Context, params: WorkerParameters) : AgentWorke
     }
 }
 
+/** Heartbeat printer checks: at most this often per printer (the heartbeat itself is every 5 min). */
+const val PROBE_EVERY_MS = 30 * 60_000L
+
 /** Status heartbeat every 5 minutes. Always schedules its successor, whatever happens. */
 class HeartbeatWorker(context: Context, params: WorkerParameters) : AgentWorker(context, params) {
     override suspend fun work(): Result {
         try {
             ServiceController.start(applicationContext, "heartbeat")
             val printers = container.printers
-            if (container.bluetooth.isBluetoothOn() && container.bluetooth.hasConnectPermission()) printers.probeAll(respectBackoff = true) else printers.refreshPassive()
+            // Battery: reconnect to a printer at most every 30 min here (a print counts as a check).
+            if (container.bluetooth.isBluetoothOn() && container.bluetooth.hasConnectPermission()) printers.probeStale(PROBE_EVERY_MS) else printers.refreshPassive()
             val status = printers.status.value
             val logsRequested = container.device.sendHeartbeat(
                 PrinterStatusPayload(

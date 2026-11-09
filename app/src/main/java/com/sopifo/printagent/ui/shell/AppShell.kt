@@ -57,6 +57,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -130,9 +131,13 @@ import kotlinx.coroutines.launch
 enum class ShellTab { HOME, AI, PLUS, ORDERS, STORE }
 
 /** Full-screen native pages over the shell. */
-enum class Overlay { PRINTERS, QUICK, ADVANCED, RECENT }
+enum class Overlay { PRINTERS, QUICK, ADVANCED, RECENT, ABOUT }
 
 private data class StoreItem(val path: String, val icon: ImageVector, val label: (S) -> String)
+
+/** Pages that hide the app's top and bottom bars (they have their own way back). */
+internal fun fullScreenPage(path: String): Boolean =
+    path.trimEnd('/').let { it == "/pos" || it.startsWith("/pos/") || it == "/dashboard/orders/new" }
 
 /** POS mode: the ＋ button already opens the POS, so the menu offers Add order in its place. */
 private val ADD_ORDER_ITEM = StoreItem("dashboard/orders/new", AppIcons.Bag) { it.addOrderMenu }
@@ -329,9 +334,10 @@ fun AppShell(
     )
     // One label size for the app and the website: send the one chosen before login, else read the website's.
     LaunchedEffect(shop.slug) { if (shop.slug != null) SizeSync.sync(c) }
-    // The POS gets the whole screen: no top or bottom bar (its own ← goes back to the dashboard).
+    // POS and Add order get the whole screen: no top or bottom bar (POS's ←, Add order's Close /
+    // Back to orders, or Android Back leave them).
     val onPos = remember(tab, pageTick) {
-        views[tab]?.url?.let { runCatching { Uri.parse(it).path.orEmpty() }.getOrDefault("") }?.startsWith("/pos") == true
+        views[tab]?.url?.let { runCatching { Uri.parse(it).path.orEmpty() }.getOrDefault("") }?.let(::fullScreenPage) == true
     }
     run {
     Box(Modifier.fillMaxSize()) {
@@ -411,6 +417,7 @@ fun AppShell(
                 onDismiss = { showStore = false },
                 onItem = ::openStore,
                 onStation = settings::setStation,
+                onAbout = { showStore = false; overlay = Overlay.ABOUT },
                 onLogOut = {
                     showStore = false
                     WebSession.logOut(c)
@@ -423,6 +430,9 @@ fun AppShell(
         }
         overlay?.let { o ->
             when (o) {
+                Overlay.ABOUT -> FullScreenPage(onClose = { overlay = null }) {
+                    AboutScreen(onClose = { overlay = null }, connected = registered == true)
+                }
                 Overlay.PRINTERS -> FullScreenPage(onClose = { overlay = null }) {
                     PrinterSetupScreen(
                         onBack = { overlay = null },
@@ -454,7 +464,7 @@ fun AppShell(
                         Overlay.QUICK -> QuickOverlay(quickMode)
                         Overlay.ADVANCED -> PrintersScreen(vm)
                         Overlay.RECENT -> ActivityScreen(viewModel<ActivityViewModel>(), vm) { it() }
-                        Overlay.PRINTERS -> Unit
+                        Overlay.PRINTERS, Overlay.ABOUT -> Unit
                     }
                 }
             }
@@ -596,12 +606,18 @@ private fun StoreSheet(
     onItem: (String) -> Unit,
     onStation: (Boolean) -> Unit,
     onLogOut: () -> Unit,
+    /** ⓘ beside "Store": About Sopifo (version, this phone, logs, help). */
+    onAbout: () -> Unit,
 ) {
     val context = LocalContext.current
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), dragHandle = null) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp).navigationBarsPadding().testTag("store_menu")) {
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(t.store, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(t.store, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onAbout, modifier = Modifier.testTag("store_about")) {
+                    Icon(Icons.Outlined.Info, contentDescription = "About Sopifo", modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(Modifier.weight(1f))
                 IconButton(onClick = onDismiss, modifier = Modifier.testTag("store_close")) { Icon(Icons.Filled.Close, contentDescription = t.back) }
             }
             storeItems(posMode).chunked(3).forEach { row ->

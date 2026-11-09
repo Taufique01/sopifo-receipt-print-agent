@@ -138,4 +138,25 @@ class PrinterWarmLinkTest {
         manager.printFast(printer, "b".toByteArray())
         assertEquals(2, opens)
     }
+
+    // Battery: the 5-minute heartbeat only reconnects to a printer not checked for 30 minutes.
+    @Test fun heartbeatProbesAPrinterAtMostEvery30Minutes() = runTest {
+        val every = 30 * 60_000L
+        manager.probeStale(every)
+        assertEquals(1, opens)
+        now += 5 * 60_000L
+        manager.probeStale(every)
+        assertEquals(1, opens)
+        now += 26 * 60_000L
+        manager.probeStale(every)
+        assertEquals(2, opens)
+    }
+
+    @Test fun aPrintCountsAsAFreshCheck() = runTest {
+        manager.print(printer, "job".toByteArray())
+        assertEquals(1, opens)
+        now += 10 * 60_000L
+        manager.probeStale(30 * 60_000L)
+        assertEquals(1, opens)
+    }
 }

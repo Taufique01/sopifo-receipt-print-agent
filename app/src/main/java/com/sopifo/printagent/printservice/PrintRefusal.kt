@@ -16,7 +16,7 @@ import com.sopifo.printagent.ui.print.SetupChecklist
  * posts the real reason with one button that fixes it (Log in / Open Printers / Open Sopifo).
  */
 object PrintRefusal {
-    enum class Reason { LOGIN, NO_LABEL_PRINTER, OTHER, PAGES_CUT }
+    enum class Reason { LOGIN, NO_LABEL_PRINTER, OTHER, PAGES_CUT, PLAN_LIMIT }
 
     /** Labels from other apps: at most this many pages (a courier label is 1–2 pages). */
     const val MAX_PAGES = 5
@@ -58,6 +58,15 @@ object PrintRefusal {
                     null,
                 )
             }
+            // The plan's prints from other apps are used up this month. No price or payment link
+            // in the app (Google Play policy): the plan is shown in Sopifo; Help is on WhatsApp.
+            Reason.PLAN_LIMIT -> Notice(
+                title,
+                if (en) "This month's prints from other apps on your plan are used up (Free: 30). See your plan in Sopifo → Pricing, or ask us on WhatsApp."
+                else "এই মাসে আপনার প্ল্যানের অন্য অ্যাপ থেকে প্রিন্ট শেষ (ফ্রি: ৩০টি)। Sopifo → Pricing-এ প্ল্যান দেখুন, বা WhatsApp-এ আমাদের জিজ্ঞেস করুন।",
+                if (en) "Open Sopifo" else "Sopifo খুলুন",
+                null,
+            )
             Reason.OTHER -> Notice(
                 title,
                 detail?.takeIf { it.isNotBlank() }?.take(200) ?: if (en) "Something went wrong. Try again." else "সমস্যা হয়েছে। আবার চেষ্টা করুন।",

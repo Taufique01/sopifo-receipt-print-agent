@@ -153,6 +153,16 @@ class SopifoPrintService : PrintService() {
         c.scope.launch {
             var outcome = Outcome.FAILED
             try {
+                // Logged in: the plan's prints from other apps this month (Free: 30).
+                if (loggedIn) {
+                    val quota = PlanQuota.take(c)
+                    if (quota is PlanQuota.Answer.Refused) {
+                        AppLog.i(TAG, "Plan limit: prints from other apps used up", "message" to quota.message)
+                        PrintRefusal.show(this@SopifoPrintService, PrintRefusal.Reason.PLAN_LIMIT, settings.lang.value)
+                        outcome = Outcome.CANCEL
+                        return@launch
+                    }
+                }
                 val renderer = QuickPrintRenderer(this@SopifoPrintService)
                 val uri = Uri.fromFile(file)
                 val total = renderer.pdfPageCount(uri)

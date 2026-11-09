@@ -49,3 +49,24 @@ class PrintServicePolicyTest {
         assertTrue(n.text.startsWith("That had 18 pages."))
     }
 }
+
+class PlanQuotaTest {
+    @Test fun usedUpIsRefusedWithTheWebsitesReason() {
+        val a = PlanQuota.parse(402, """{"error":"Free plan: 30 prints from other apps a month — used up","code":"PLAN_LIMIT"}""")
+        assertTrue(a is PlanQuota.Answer.Refused)
+        assertTrue((a as PlanQuota.Answer.Refused).message.startsWith("Free plan: 30"))
+    }
+
+    @Test fun anythingElsePrints() {
+        assertEquals(PlanQuota.Answer.Allowed, PlanQuota.parse(200, """{"ok":true,"left":12}"""))
+        // Not signed in on the website / a server hiccup: never stop the print because of it.
+        assertEquals(PlanQuota.Answer.Allowed, PlanQuota.parse(401, null))
+        assertEquals(PlanQuota.Answer.Allowed, PlanQuota.parse(500, "oops"))
+    }
+
+    @Test fun planLimitNoticeHasNoPriceOrPaymentLink() {
+        val n = PrintRefusal.notice(PrintRefusal.Reason.PLAN_LIMIT, "en")
+        assertTrue(!n.text.contains("৳") && !n.text.contains("pay", ignoreCase = true))
+        assertEquals(null, n.open)
+    }
+}

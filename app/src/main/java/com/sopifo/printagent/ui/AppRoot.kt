@@ -145,6 +145,9 @@ fun AppRoot(
             },
         )
         advanced -> FullScreenOverlay(onClose = { advanced = false }) { PrintersScreen(vm) }
+        route == StartRoute.ABOUT -> FullScreenPage(onClose = { route = null }) {
+            com.sopifo.printagent.ui.shell.AboutScreen(onClose = { route = null })
+        }
         route == StartRoute.PRINTERS -> FullScreenPage(onClose = { route = null }) {
             PrinterSetupScreen(
                 onBack = { route = null },

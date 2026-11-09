@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FilledTonalButton
@@ -58,7 +59,7 @@ import com.sopifo.printagent.ui.pages.WebLinks
 import com.sopifo.printagent.ui.theme.AppIcons
 import com.sopifo.printagent.ui.theme.StatusGood
 
-enum class StartRoute { LOGIN, SIGNUP, PRINTERS }
+enum class StartRoute { LOGIN, SIGNUP, PRINTERS, ABOUT }
 
 /**
  * First open, no account: set up the printer and try prints. Everything else is behind
@@ -77,6 +78,9 @@ fun StartScreen(notice: String?, onOpen: (StartRoute) -> Unit) {
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             HelpIcon(page = "Start")
+            IconButton(onClick = { onOpen(StartRoute.ABOUT) }, modifier = Modifier.testTag("start_about")) {
+                Icon(androidx.compose.material.icons.Icons.Outlined.Info, contentDescription = "About Sopifo")
+            }
             Spacer(Modifier.weight(1f))
             FilterChip(selected = lang == "bn", onClick = { settings.setLang("bn") }, label = { Text("বাংলা") }, modifier = Modifier.testTag("lang_bn"))
             Spacer(Modifier.size(6.dp))
