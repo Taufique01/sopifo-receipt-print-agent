@@ -53,7 +53,12 @@ import kotlin.math.roundToInt
 
 /** Quick print: formatted text, an image or a PDF on either printer, with a preview of what prints. */
 @Composable
-fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
+fun QuickPrintScreen(
+    vm: QuickPrintViewModel,
+    snackbar: SnackbarHostState,
+    /** False when the screen around it already shows "Quick print" (beside its close button). */
+    showTitle: Boolean = true,
+) {
     val s by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     LaunchedEffect(message) {
@@ -66,7 +71,7 @@ fun QuickPrintScreen(vm: QuickPrintViewModel, snackbar: SnackbarHostState) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ScreenTitle("Quick print")
+        if (showTitle) ScreenTitle("Quick print")
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             QuickMode.entries.forEachIndexed { i, mode ->
                 SegmentedButton(

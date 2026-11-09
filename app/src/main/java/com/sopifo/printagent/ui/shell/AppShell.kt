@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalDrawerSheet
@@ -459,7 +460,10 @@ fun AppShell(
                         },
                     )
                 }
-                else -> FullScreenOverlay(onClose = { overlay = if (o == Overlay.ADVANCED) Overlay.PRINTERS else null; SharedFile.item.value = null }) {
+                else -> FullScreenOverlay(
+                    onClose = { overlay = if (o == Overlay.ADVANCED) Overlay.PRINTERS else null; SharedFile.item.value = null },
+                    title = if (o == Overlay.QUICK) t.quickPrint else null,
+                ) {
                     when (o) {
                         Overlay.QUICK -> QuickOverlay(quickMode)
                         Overlay.ADVANCED -> PrintersScreen(vm)
@@ -490,7 +494,7 @@ private fun QuickOverlay(mode: QuickMode) {
         }
     }
     Box(Modifier.fillMaxSize()) {
-        QuickPrintScreen(qvm, snackbar)
+        QuickPrintScreen(qvm, snackbar, showTitle = false)
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 }
@@ -755,13 +759,27 @@ private fun OfflineCard(t: S, onRetry: () -> Unit) {
 }
 
 @Composable
-fun FullScreenOverlay(onClose: () -> Unit, content: @Composable () -> Unit) {
+fun FullScreenOverlay(onClose: () -> Unit, title: String? = null, content: @Composable () -> Unit) {
     BackHandler(onBack = onClose)
-    Surface(Modifier.fillMaxSize()) {
+    // Below the status bar, so the close button is fully tappable; with a title, title and a
+    // proper close button share one row (Quick print).
+    Surface(Modifier.fillMaxSize().statusBarsPadding()) {
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose, modifier = Modifier.testTag("overlay_close")) {
-                    Icon(Icons.Filled.Close, contentDescription = strings().back)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (title != null) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.weight(1f).padding(start = 12.dp).testTag("overlay_title"),
+                    )
+                    FilledTonalIconButton(onClick = onClose, modifier = Modifier.size(48.dp).testTag("overlay_close")) {
+                        Icon(Icons.Filled.Close, contentDescription = strings().back)
+                    }
+                } else {
+                    IconButton(onClick = onClose, modifier = Modifier.size(48.dp).testTag("overlay_close")) {
+                        Icon(Icons.Filled.Close, contentDescription = strings().back)
+                    }
                 }
             }
             Box(Modifier.weight(1f)) { content() }

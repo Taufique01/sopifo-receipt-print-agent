@@ -225,6 +225,8 @@ fun AboutScreen(onClose: () -> Unit, connected: Boolean? = null) {
                 LinkRow(tr("Terms", "শর্তাবলি")) { openSite("terms") }
                 LinkRow(tr("Refund policy", "রিফান্ড পলিসি")) { openSite("refund-policy") }
                 LinkRow(tr("Rate Sopifo on Google Play", "Google Play-তে রেটিং দিন")) { openPlay() }
+                // Google Play: the in-app way to ask for the account and its data to be deleted.
+                LinkRow(tr("Delete account & data", "অ্যাকাউন্ট ও ডেটা মুছুন")) { openSite("data-deletion${if (bn) "" else "?lang=en"}") }
             }
 
             Section(tr("Open-source software", "ওপেন-সোর্স সফটওয়্যার")) {
