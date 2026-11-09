@@ -41,6 +41,7 @@ class RunNotifications(private val context: Context) : RunNotifier {
     }
 
     override fun progress(run: PrintRunEntity, done: Int) {
+        if (NotifyPolicy.quietProgress(run)) return
         notify(
             PROGRESS_ID,
             NotificationCompat.Builder(context, CHANNEL_PROGRESS)
@@ -59,6 +60,7 @@ class RunNotifications(private val context: Context) : RunNotifier {
 
     override fun finished(run: PrintRunEntity) {
         runCatching { nm.cancel(PROGRESS_ID) }
+        if (!NotifyPolicy.showResult(run)) return
         val title = when {
             run.state == RunState.STOPPED && run.printed == 0 -> "${run.title}: nothing printed"
             run.failed == 0 -> "${run.title}: ${run.printed} printed"

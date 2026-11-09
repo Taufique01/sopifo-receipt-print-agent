@@ -134,6 +134,12 @@ enum class Overlay { PRINTERS, QUICK, ADVANCED, RECENT }
 
 private data class StoreItem(val path: String, val icon: ImageVector, val label: (S) -> String)
 
+/** POS mode: the ＋ button already opens the POS, so the menu offers Add order in its place. */
+private val ADD_ORDER_ITEM = StoreItem("dashboard/orders/new", AppIcons.Bag) { it.addOrderMenu }
+
+private fun storeItems(posMode: Boolean): List<StoreItem> =
+    if (posMode) STORE_ITEMS.map { if (it.path == "pos") ADD_ORDER_ITEM else it } else STORE_ITEMS
+
 /** Store side menu = the website's sidebar, minus pricing / custom domain (no payments in the app). */
 private val STORE_ITEMS = listOf(
     StoreItem("dashboard/products/new", Icons.Filled.Add) { it.addProduct },
@@ -401,6 +407,7 @@ fun AppShell(
                 t = t,
                 current = if (tab == ShellTab.STORE) storePath else null,
                 station = station,
+                posMode = shop.pos,
                 onDismiss = { showStore = false },
                 onItem = ::openStore,
                 onStation = settings::setStation,
@@ -583,6 +590,8 @@ private fun StoreSheet(
     t: S,
     current: String?,
     station: Boolean,
+    /** Shop in POS mode: the POS tile becomes Add order. */
+    posMode: Boolean,
     onDismiss: () -> Unit,
     onItem: (String) -> Unit,
     onStation: (Boolean) -> Unit,
@@ -595,7 +604,7 @@ private fun StoreSheet(
                 Text(t.store, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 IconButton(onClick = onDismiss, modifier = Modifier.testTag("store_close")) { Icon(Icons.Filled.Close, contentDescription = t.back) }
             }
-            STORE_ITEMS.chunked(3).forEach { row ->
+            storeItems(posMode).chunked(3).forEach { row ->
                 Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { item -> StoreTile(item.icon, item.label(t), current == item.path, Modifier.weight(1f), "store_${item.path.substringAfterLast('/').trimStart('#')}") { onItem(item.path) } }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }

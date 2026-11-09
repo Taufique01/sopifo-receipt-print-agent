@@ -86,7 +86,7 @@ class PrintAgentService : Service() {
     }
 
     private fun goForeground(): Boolean = try {
-        val notification = Notifications.serviceNotification(this, "Ready")
+        val notification = Notifications.serviceNotification(this, "Ready to print")
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0
         ServiceCompat.startForeground(this, Notifications.SERVICE_NOTIFICATION_ID, notification, type)
         true
@@ -173,9 +173,9 @@ class PrintAgentService : Service() {
 
     @OptIn(FlowPreview::class)
     private fun observeStatus() {
+        // "Ready to print", or the one thing to fix: no "Disconnected" between prints (normal).
         combine(container.printers.status, container.cloudOnline) { printers, online ->
-            val cloud = if (online == true) "Online" else "No server connection"
-            "Cloud: $cloud · Receipt: ${label(printers[PrinterRole.RECEIPT])} · Label: ${label(printers[PrinterRole.LABEL])}"
+            NotifyPolicy.statusText(online, printers[PrinterRole.RECEIPT], printers[PrinterRole.LABEL])
         }
             .distinctUntilChanged()
             .debounce(1_000)
@@ -188,12 +188,6 @@ class PrintAgentService : Service() {
                 }
             }
             .launchIn(scope)
-    }
-
-    private fun label(state: PrinterState?) = when (state) {
-        PrinterState.CONNECTED -> "Connected"
-        PrinterState.NOT_CONFIGURED, null -> "Not set"
-        else -> "Disconnected"
     }
 
     override fun onDestroy() {
