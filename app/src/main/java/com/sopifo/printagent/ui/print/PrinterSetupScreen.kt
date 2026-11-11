@@ -69,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import com.sopifo.printagent.bt.FoundDevice
+import com.sopifo.printagent.bt.PrinterTags
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.quick.QuickLabelSize
 import com.sopifo.printagent.ui.screens.printerStateGood
@@ -188,10 +189,10 @@ fun PrinterSetupScreen(
                         states = states,
                         detail = { step ->
                             when (step) {
-                                SetupStep.LABEL -> if (label == null) t.noPrinter else if (facts.labelReachable == false) t.notReachable else label.name
+                                SetupStep.LABEL -> if (label == null) t.noPrinter else if (facts.labelReachable == false) t.notReachable else "${label.name} ${PrinterTags.addressTail(label.macAddress)}".trim()
                                 SetupStep.SIZE -> if (states[step] == StepState.DONE) "${settings.labelSize.value.title.substringBefore(" (")} · ${label?.labelGapMm ?: 0} mm" else "—"
                                 SetupStep.TEST -> if (states[step] == StepState.DONE) t.printedOk else "—"
-                                SetupStep.RECEIPT -> receipt?.let { "${it.name} · ${it.paperWidthMm ?: 58} mm" } ?: t.skipped
+                                SetupStep.RECEIPT -> receipt?.let { "${it.name} ${PrinterTags.addressTail(it.macAddress)} · ${it.paperWidthMm ?: 58} mm" } ?: t.skipped
                                 SetupStep.SERVICE -> if (flags.printServiceUsed) t.itWorked else t.serviceOptional
                             }
                         },
@@ -277,8 +278,12 @@ private fun InlineFinder(vm: PrintersViewModel, t: S, role: PrinterRole, onChose
                 }
             }
             if (p.pairFailed) Text(t.pairFailed, color = StatusBad, fontWeight = FontWeight.SemiBold)
+            val configs by vm.configs.collectAsStateWithLifecycle()
+            val saved = configs.map { it.role to it.macAddress }
             val visible = if (p.showAll) p.devices else p.devices.filter { it.printerLike || it.paired }
-            visible.forEach { d -> FinderRow(d, p.pairingAddress == d.address, t) { vm.choose(d, forRole = role, autoTest = false) } }
+            visible.forEach { d ->
+                FinderRow(d, PrinterTags.rolesOf(d.address, saved), p.pairingAddress == d.address, t) { vm.choose(d, forRole = role, autoTest = false) }
+            }
             if (!p.scanning && visible.isEmpty()) Text(t.noPrinterFound)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (!p.scanning) FilledTonalButton(onClick = vm::startSearch, modifier = Modifier.testTag("finder_again")) {
@@ -294,7 +299,7 @@ private fun InlineFinder(vm: PrintersViewModel, t: S, role: PrinterRole, onChose
 }
 
 @Composable
-private fun FinderRow(d: FoundDevice, pairing: Boolean, t: S, onUse: () -> Unit) {
+private fun FinderRow(d: FoundDevice, usedFor: List<PrinterRole>, pairing: Boolean, t: S, onUse: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -304,7 +309,14 @@ private fun FinderRow(d: FoundDevice, pairing: Boolean, t: S, onUse: () -> Unit)
             Icon(if (d.printerLike) AppIcons.Print else AppIcons.Bluetooth, contentDescription = null, modifier = Modifier.size(30.dp))
             Column(Modifier.weight(1f)) {
                 Text(d.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (d.paired) Text("✓ ${t.paired}", style = MaterialTheme.typography.labelSmall, color = StatusGood)
+                // The end of the address and what it's used for: two printers with the same name differ here.
+                val tail = PrinterTags.addressTail(d.address).takeIf { it.isNotEmpty() && it.removePrefix("…") != d.name.uppercase().takeLast(5) }
+                val parts = listOfNotNull(tail, if (d.paired) "✓ ${t.paired}" else null)
+                if (parts.isNotEmpty()) Text(parts.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = if (d.paired) StatusGood else MaterialTheme.colorScheme.onSurfaceVariant)
+                if (usedFor.isNotEmpty()) {
+                    val jobs = usedFor.joinToString(", ") { if (it == PrinterRole.LABEL) t.labelPrinter else t.receiptPrinter }
+                    Text("● ${t.inUse} · $jobs", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.testTag("finder_in_use_${d.address}"))
+                }
             }
             if (pairing) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
             else Button(onClick = onUse) { Text(t.use, fontWeight = FontWeight.Bold) }

@@ -246,6 +246,8 @@ fun AppShell(
     var pageTick by remember { mutableStateOf(0) }
     val host = remember {
         object : WebHost {
+            /** The page shown before this one (Cloud Print → Couriers re-checks the label size). */
+            private var lastPath: String? = null
             override fun openPrintSheet() { overlay = Overlay.PRINTERS }
             override fun openFacebookLogin() = WebLinks.open(activity, WebSession.facebookStartUrl(activity, c))
             override fun pickFiles(params: WebChromeClient.FileChooserParams, callback: ValueCallback<Array<Uri>>): Boolean {
@@ -267,6 +269,9 @@ fun AppShell(
                 pageTick++
                 // POS / orders open: connect the printer now so the first print is instant.
                 c.phonePrinter.warmFor(path)
+                // Orders / Couriers: labels at the website's current size (2.1.15).
+                SizeSync.checkOnPage(c, path, lastPath)
+                lastPath = path
                 if (path.startsWith("/sign-in") && !WebSession.isLoggedIn(c)) {
                     settings.clearShop()
                     onLoggedOut()

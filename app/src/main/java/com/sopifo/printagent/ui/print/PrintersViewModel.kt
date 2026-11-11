@@ -220,15 +220,17 @@ class PrintersViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearTestSent() { _testSent.value = false }
 
+    /** Sent to the website at once (2.1.15), so order and courier labels print at this size too. */
     fun setSize(size: com.sopifo.printagent.quick.QuickLabelSize) {
         settings.setLabelSize(size)
         c.phonePrinter.forgetDrawn()
+        c.scope.launch { com.sopifo.printagent.ui.shell.SizeSync.sync(c) }
     }
 
     /** Step 2 done: size + gap confirmed (and sent to the website when logged in). */
     fun confirmSize() {
         settings.updateSetup { it.copy(sizeConfirmed = true) }
-        viewModelScope.launch { com.sopifo.printagent.ui.shell.SizeSync.sync(c) }
+        c.scope.launch { com.sopifo.printagent.ui.shell.SizeSync.sync(c) }
     }
 
     /** Receipts on the label printer too ("Same printer"). */
