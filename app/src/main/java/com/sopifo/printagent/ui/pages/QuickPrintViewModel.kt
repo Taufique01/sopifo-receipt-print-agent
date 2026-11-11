@@ -72,7 +72,7 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
         // Starts on the printer and label size used last (else the receipt printer and the label
         // size chosen on the Printers screen).
         com.sopifo.printagent.quick.QuickPrintChoices.load(app, com.sopifo.printagent.ui.shell.AppSettings.get(app).labelSize.value)
-            .let { QuickPrintState(role = it.role, labelSize = it.labelSize) },
+            .let { QuickPrintState(role = it.role, labelSize = it.labelSize, imageFit = it.imageFit, pdfFit = it.pdfFit) },
     )
     val state: StateFlow<QuickPrintState> = _state.asStateFlow()
 
@@ -88,11 +88,13 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
         val before = _state.value
         _state.update(change)
         val after = _state.value
-        // Remember the printer and label size for the next Quick print / Share.
-        if (after.role != before.role || after.labelSize != before.labelSize) {
+        // Remember the printer, label size and Fit / Fill for the next Quick print / Share.
+        if (after.role != before.role || after.labelSize != before.labelSize ||
+            after.imageFit != before.imageFit || after.pdfFit != before.pdfFit
+        ) {
             com.sopifo.printagent.quick.QuickPrintChoices.save(
                 getApplication(),
-                com.sopifo.printagent.quick.QuickPrintChoices.Choice(after.role, after.labelSize),
+                com.sopifo.printagent.quick.QuickPrintChoices.Choice(after.role, after.labelSize, after.imageFit, after.pdfFit),
             )
         }
         refreshPreview()
