@@ -31,9 +31,9 @@ class ApiException(
     val malformed: Boolean = false,
     /** The backend's machine-readable `code`, e.g. "PRINT_LOCKED". */
     val code: String? = null,
-    /** Where the seller unlocks a paid feature (website), sent with PRINT_LOCKED. */
+    /** Sent by the website with PRINT_LOCKED; the app doesn't show it. */
     val unlockUrl: String? = null,
-    /** What unlocking costs (৳), sent with PRINT_LOCKED so the app can say "Pay ৳49". */
+    /** Sent by the website with PRINT_LOCKED; the app doesn't show it. */
     val price: Int? = null,
 ) : IOException(message, cause) {
     val retryable: Boolean get() = httpCode == null || httpCode == 408 || httpCode == 429 || httpCode >= 500

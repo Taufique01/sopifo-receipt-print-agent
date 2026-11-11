@@ -130,10 +130,7 @@ fun rememberServerBaseUrl(): String? {
 /** Why the Orders / Shipping page is empty: courier & bulk printing isn't unlocked for this shop. */
 data class PrintLock(val message: String, val unlockUrl: String?, val price: Int? = null)
 
-/**
- * Shown instead of the list when printing is locked. The pay button comes first: it opens Cloud Print
- * on the website with the unlock dialog (EPS); printing from the dashboard stays as the free option.
- */
+/** Shown instead of the list when printing is locked. */
 @Composable
 fun LockedCard(lock: PrintLock, baseUrl: String?) {
     // No payment links or hints inside the app (Google Play payments policy): what's locked only.
