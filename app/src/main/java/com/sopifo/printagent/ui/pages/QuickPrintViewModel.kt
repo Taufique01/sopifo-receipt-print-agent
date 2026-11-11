@@ -52,8 +52,8 @@ data class QuickPrintState(
     val pdfStretch: PdfStretch = PdfStretch.X1,
     /** Used when the chosen printer is a label (TSPL) printer. */
     val labelSize: QuickLabelSize = QuickLabelSize.S50X30,
-    /** Smart shrink: courier label barcodes redrawn sharp on the small label. */
-    val smart: Boolean = true,
+    /** Smart shrink: courier label barcodes redrawn sharp on the small label (off by default, 2.1.13). */
+    val smart: Boolean = com.sopifo.printagent.quick.QuickPrintChoices.PDF_SMART_DEFAULT,
     val copies: Int = 1,
     /** The chosen printer is a label (TSPL) printer: it needs a label size. */
     val printerIsLabel: Boolean = false,
@@ -69,8 +69,10 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
     private val renderer = QuickPrintRenderer(app)
 
     private val _state = MutableStateFlow(
-        // Starts on the label size chosen on the Printers screen.
-        QuickPrintState(labelSize = com.sopifo.printagent.ui.shell.AppSettings.get(app).labelSize.value),
+        // Starts on the printer and label size used last (else the receipt printer and the label
+        // size chosen on the Printers screen).
+        com.sopifo.printagent.quick.QuickPrintChoices.load(app, com.sopifo.printagent.ui.shell.AppSettings.get(app).labelSize.value)
+            .let { QuickPrintState(role = it.role, labelSize = it.labelSize) },
     )
     val state: StateFlow<QuickPrintState> = _state.asStateFlow()
 
@@ -83,7 +85,16 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
     init { refreshPreview() }
 
     fun update(change: (QuickPrintState) -> QuickPrintState) {
+        val before = _state.value
         _state.update(change)
+        val after = _state.value
+        // Remember the printer and label size for the next Quick print / Share.
+        if (after.role != before.role || after.labelSize != before.labelSize) {
+            com.sopifo.printagent.quick.QuickPrintChoices.save(
+                getApplication(),
+                com.sopifo.printagent.quick.QuickPrintChoices.Choice(after.role, after.labelSize),
+            )
+        }
         refreshPreview()
     }
 

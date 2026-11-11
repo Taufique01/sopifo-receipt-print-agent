@@ -35,8 +35,8 @@ import java.io.FileInputStream
 /**
  * "Sopifo" in Android's Print menu (app 2.0.2): print from the Pathao / Steadfast app, Chrome or
  * any app straight to the Bluetooth label printer. The page comes as a PDF (A4 by default, as the
- * app designed it); Sopifo trims the empty paper, smart-shrinks it to the label size chosen on
- * the Printers screen (barcodes redrawn sharp) and prints it like a Quick print.
+ * app designed it); Sopifo trims the empty paper, fits it to the label size chosen on the
+ * Printers screen (no smart shrink since 2.1.13: QuickPrintChoices) and prints it like a Quick print.
  * Needs a Sopifo login (full features) and a label printer.
  */
 class SopifoPrintService : PrintService() {
@@ -169,7 +169,8 @@ class SopifoPrintService : PrintService() {
                 val pages = total.coerceAtMost(PrintRefusal.MAX_PAGES)
                 val bitmaps = renderer.pdfPages(
                     uri, 1, pages, size.target,
-                    trim = true, fit = ImageFit.FIT, darkness = PdfDarkness.NORMAL, smart = true,
+                    trim = true, fit = ImageFit.FIT, darkness = PdfDarkness.NORMAL,
+                    smart = com.sopifo.printagent.quick.QuickPrintChoices.SPOOLER_SMART_SHRINK,
                 )
                 val items = bitmaps.mapIndexed { i, bmp ->
                     val saved = renderer.save(bmp)
