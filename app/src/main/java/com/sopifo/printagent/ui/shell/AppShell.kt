@@ -350,7 +350,7 @@ fun AppShell(
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
-                if (!onPos) {
+                if (!onPos) Column {
                     // Slim, one line: shop · printer chip · bell · help.
                     TopAppBar(
                         expandedHeight = 52.dp,
@@ -365,6 +365,8 @@ fun AppShell(
                             HelpIcon(page = "App: ${pathOf(tab)}")
                         },
                     )
+                    // A newer version on Google Play: "New version … Update ✕" (Admin → App versions).
+                    UpdateBar()
                 }
             },
             bottomBar = {

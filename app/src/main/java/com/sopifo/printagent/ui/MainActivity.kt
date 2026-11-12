@@ -43,12 +43,15 @@ class MainActivity : FragmentActivity() {
         handleIncoming(intent)
         setContent {
             SopifoTheme {
-                AppRoot(
-                    viewModel,
-                    onRequestPermissions = ::requestRuntimePermissions,
-                    openRequest = openRequest.value,
-                    onOpenHandled = { openRequest.value = null },
-                )
+                // Below the required version (Admin → App versions): only "Update Sopifo to continue".
+                com.sopifo.printagent.ui.shell.UpdateGate {
+                    AppRoot(
+                        viewModel,
+                        onRequestPermissions = ::requestRuntimePermissions,
+                        openRequest = openRequest.value,
+                        onOpenHandled = { openRequest.value = null },
+                    )
+                }
             }
         }
         requestRuntimePermissions()
