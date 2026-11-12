@@ -375,7 +375,14 @@ fun AppShell(
                         pos = shop.pos,
                         storeOpen = showStore,
                         onTab = { next ->
-                            if (next == ShellTab.PLUS && tab == ShellTab.PLUS) views[ShellTab.PLUS]?.loadUrl(WebSession.url(c, pathOf(ShellTab.PLUS)))
+                            // ＋ shows Add order (or POS), even after an order moved its page on to Orders.
+                            if (next == ShellTab.PLUS) {
+                                views[ShellTab.PLUS]?.let { v ->
+                                    if (PlusTab.shouldReload(tab == ShellTab.PLUS, v.url, pathOf(ShellTab.PLUS))) {
+                                        v.loadUrl(WebSession.url(c, pathOf(ShellTab.PLUS)))
+                                    }
+                                }
+                            }
                             tab = next
                         },
                         onStore = { showStore = true },
