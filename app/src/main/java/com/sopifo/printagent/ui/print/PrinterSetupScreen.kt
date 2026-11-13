@@ -617,8 +617,17 @@ private fun BatteryCard(t: S) {
     }
 }
 
-/** This phone's link to the shop: whether the shop's prints come to this phone. */
-class PhoneLink(val connected: Boolean, val onDisconnect: () -> Unit, val onConnect: () -> Unit)
+/**
+ * This phone's link to the shop: whether the shop's prints come to this phone. [status]: while
+ * connecting, "Connecting this phone…"; after a failed try, why (the button then tries again).
+ */
+class PhoneLink(
+    val connected: Boolean,
+    val onDisconnect: () -> Unit,
+    val onConnect: () -> Unit,
+    val connecting: Boolean = false,
+    val status: String? = null,
+)
 
 @Composable
 private fun PhoneLinkButton(t: S, phone: PhoneLink) {
@@ -650,11 +659,25 @@ private fun PhoneLinkButton(t: S, phone: PhoneLink) {
     } else {
         Button(
             onClick = phone.onConnect,
+            enabled = !phone.connecting,
             colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = StatusGood),
             modifier = Modifier.fillMaxWidth().height(50.dp).testTag("printers_connect"),
         ) {
-            Icon(AppIcons.Bluetooth, contentDescription = null)
-            Text("  ${t.connectPhone}", fontWeight = FontWeight.Bold)
+            if (phone.connecting) {
+                androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text("  ${t.linking}", fontWeight = FontWeight.Bold)
+            } else {
+                Icon(AppIcons.Bluetooth, contentDescription = null)
+                Text("  ${if (phone.status != null) t.retry else t.connectPhone}", fontWeight = FontWeight.Bold)
+            }
+        }
+        if (!phone.connecting && phone.status != null) {
+            Text(
+                phone.status,
+                color = StatusBad,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag("printers_connect_error"),
+            )
         }
     }
 }

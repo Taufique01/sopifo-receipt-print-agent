@@ -216,17 +216,20 @@ fun AppShell(
 
     // Logged in with a shop but this phone isn't the shop's printer yet: connect it, no code.
     val userDisconnected by settings.userDisconnected.collectAsStateWithLifecycle()
-    LaunchedEffect(shop.slug, registered, userDisconnected) {
-        if (shop.slug != null && registered == false && !userDisconnected && linkState == null) {
-            linkState = t.linking
-            linkState = when (val r = WebSession.linkDevice(c)) {
-                WebSession.LinkResult.Linked -> {
-                    vm.refreshRegistration()
-                    null
-                }
-                is WebSession.LinkResult.Failed -> "${t.linkFailed} · ${r.message}"
+    /** One link at a time: the automatic one below or Printers → Connect phone. */
+    suspend fun linkPhone() {
+        linkState = t.linking
+        val r = WebSession.linkDevice(c)
+        linkState = when (r) {
+            WebSession.LinkResult.Linked -> {
+                vm.refreshRegistration()
+                null
             }
+            is WebSession.LinkResult.Failed -> "${t.linkFailed} · ${r.message}"
         }
+    }
+    LaunchedEffect(shop.slug, registered, userDisconnected) {
+        if (shop.slug != null && registered == false && !userDisconnected && linkState == null) linkPhone()
     }
 
     // File uploads and the camera for the website (product photos, POS scanner).
@@ -461,12 +464,20 @@ fun AppShell(
                             connected = registered == true,
                             onDisconnect = {
                                 settings.setUserDisconnected(true)
+                                linkState = null
                                 vm.unregister()
                             },
+                            // Connects right here (not left to the automatic link behind this page),
+                            // so "Connecting…" and any failure show under the button.
                             onConnect = {
-                                linkState = null
-                                settings.setUserDisconnected(false)
+                                if (linkState != t.linking) {
+                                    linkState = t.linking
+                                    settings.setUserDisconnected(false)
+                                    scope.launch { linkPhone() }
+                                }
                             },
+                            connecting = linkState == t.linking,
+                            status = linkState?.takeIf { it != t.linking },
                         ),
                         onQuick = { q ->
                             quickMode = when (q) { QuickStart.PDF -> QuickMode.PDF; QuickStart.PHOTO -> QuickMode.IMAGE; QuickStart.TEXT -> QuickMode.TEXT }
