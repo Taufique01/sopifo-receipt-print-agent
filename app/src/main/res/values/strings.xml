@@ -1,6 +1,8 @@
 <resources>
     <string name="app_name">Sopifo</string>
     <string name="share_print">Print with Sopifo</string>
+    <!-- Share sheet and text selection menu: a customer message becomes an order. -->
+    <string name="share_order">Sopifo order</string>
     <string name="notif_channel_service">Print agent status</string>
     <string name="notif_channel_service_desc">Keeps the print agent ready to receive jobs</string>
     <string name="notif_channel_jobs">Print jobs</string>

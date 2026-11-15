@@ -178,6 +178,10 @@ data class S(
     val benefitAi: String,
     val benefitMore: String,
     val pairFailed: String,
+    /** Bar after a customer's message was copied (Messenger …): one tap opens Add order filled. */
+    val copiedMessage: String,
+    val makeOrder: String,
+    val dismiss: String,
 )
 
 val BN = S(
@@ -349,6 +353,9 @@ val BN = S(
     benefitAi = "AI ছবি ও পোস্ট",
     benefitMore = "আরও অনেক কিছু",
     pairFailed = "যুক্ত হয়নি — প্রিন্টার চালু করে আবার চেষ্টা করুন",
+    copiedMessage = "কপি করা মেসেজ",
+    makeOrder = "অর্ডার করুন",
+    dismiss = "বন্ধ",
 )
 
 val EN = S(
@@ -520,6 +527,9 @@ val EN = S(
     benefitAi = "AI photos & posts",
     benefitMore = "And much more",
     pairFailed = "Didn't pair — turn the printer on and try again",
+    copiedMessage = "Copied message",
+    makeOrder = "Make order",
+    dismiss = "Dismiss",
 )
 
 @Composable

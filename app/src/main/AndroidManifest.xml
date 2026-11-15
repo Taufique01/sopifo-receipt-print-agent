@@ -63,6 +63,18 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="image/*" />
             </intent-filter>
+            <!-- Share → Sopifo order: a customer's message (name, phone, address) opens Add order filled. -->
+            <intent-filter android:label="@string/share_order">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- Select text → "Sopifo order" in the selection menu: the same. -->
+            <intent-filter android:label="@string/share_order">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
             <intent-filter android:label="@string/share_print">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

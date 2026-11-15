@@ -197,6 +197,14 @@ class SopifoBridge(private val activity: Activity, private val webView: WebView,
     fun facebookLogin(next: String) {
         if (trusted) main.post { host.openFacebookLogin() }
     }
+
+    /** Add order's 📋 Paste: the phone's clipboard text (web views can't read it), "" when empty. */
+    @JavascriptInterface
+    fun readClipboard(): String = if (trusted) CopiedOrder.readClipboard(activity) else ""
+
+    /** Add order takes a shared / copied customer message once ("" when none). */
+    @JavascriptInterface
+    fun takeSharedText(): String = if (trusted) CopiedOrder.take() else ""
 }
 
 /** Prints a website page (invoice / label PDF view) with Android's print service. */

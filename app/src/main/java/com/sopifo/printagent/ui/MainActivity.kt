@@ -2,6 +2,7 @@ package com.sopifo.printagent.ui
 
 import android.net.Uri
 import com.sopifo.printagent.ui.shell.AuthReturn
+import com.sopifo.printagent.ui.shell.CopiedOrder
 import com.sopifo.printagent.ui.shell.SharedFile
 
 import android.Manifest
@@ -63,9 +64,21 @@ class MainActivity : FragmentActivity() {
         handleIncoming(intent)
     }
 
-    /** sopifo://auth?code=… (Facebook sign-in finished in Chrome) and Share → Sopifo (PDF / image). */
+    /**
+     * sopifo://auth?code=… (Facebook sign-in finished in Chrome), Share → Sopifo (PDF / image), and
+     * a customer's message shared as text or picked in the text selection menu (→ Add order).
+     */
     private fun handleIncoming(intent: Intent?) {
         intent ?: return
+        val text = when (intent.action) {
+            Intent.ACTION_SEND -> intent.takeIf { it.type?.startsWith("text/") == true }?.getCharSequenceExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_PROCESS_TEXT -> intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)
+            else -> null
+        }
+        if (!text.isNullOrBlank()) {
+            CopiedOrder.share(text.toString())
+            return
+        }
         val data = intent.data
         if (intent.action == Intent.ACTION_VIEW && data?.scheme == "sopifo" && data.host == "auth") {
             data.getQueryParameter("code")?.takeIf { it.length in 20..8000 }?.let { AuthReturn.code.value = it }
@@ -85,6 +98,24 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshDeviceFacts()
+    }
+
+    /** Set when the seller left the app: coming back may bring a customer's message on the clipboard. */
+    private var wasAway = false
+
+    override fun onStop() {
+        super.onStop()
+        wasAway = true
+        CopiedOrder.markClipboardSeen(this)
+    }
+
+    // Android lets the app read the clipboard only once its window has focus (not yet in onResume).
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && wasAway) {
+            wasAway = false
+            CopiedOrder.checkClipboard(this)
+        }
     }
 
     fun requestRuntimePermissions() {

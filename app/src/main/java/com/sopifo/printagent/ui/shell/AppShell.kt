@@ -126,6 +126,7 @@ import com.sopifo.printagent.ui.theme.AppIcons
 import com.sopifo.printagent.ui.theme.StatusBad
 import com.sopifo.printagent.ui.theme.StatusGood
 import com.sopifo.printagent.ui.theme.StatusNeutral
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** The bottom bar, like the website's phone menu: Home · AI · (＋) · Orders · Store. */
@@ -314,6 +315,29 @@ fun AppShell(
         AuthReturn.code.value = null
         WebSession.facebookFinishUrl(activity, c, code)?.let { viewFor(tab).loadUrl(it) }
     }
+    // A customer's message (Share / text selection / "Make order" on the copied bar): Add order
+    // opens and the website takes the text from the bridge (an open Add order is told to take it).
+    fun openAddOrderForText() {
+        val target = if (shop.pos) ShellTab.STORE else ShellTab.PLUS
+        val path = "dashboard/orders/new"
+        if (target == ShellTab.STORE) storePath = path
+        val existing = views[target]
+        val onAddOrder = existing?.url?.let { runCatching { Uri.parse(it).path.orEmpty().trimEnd('/') }.getOrDefault("") } == "/$path"
+        when {
+            existing == null -> viewFor(target)
+            onAddOrder -> existing.evaluateJavascript("window.dispatchEvent(new Event('sopifo:shared-text'))", null)
+            else -> existing.loadUrl(WebSession.url(c, path))
+        }
+        overlay = null
+        showStore = false
+        tab = target
+    }
+    val orderTick by CopiedOrder.openTick.collectAsStateWithLifecycle()
+    LaunchedEffect(orderTick) { if (CopiedOrder.claimOpen(orderTick)) openAddOrderForText() }
+    val copied by CopiedOrder.offer.collectAsStateWithLifecycle()
+    // Not acted on: the bar goes after a minute.
+    LaunchedEffect(copied) { if (copied != null) { delay(60_000); CopiedOrder.dismiss() } }
+
     // Share → Sopifo: Quick print with the file.
     val shared by SharedFile.item.collectAsStateWithLifecycle()
     LaunchedEffect(shared) { if (shared != null) { quickMode = if (shared!!.isPdf) QuickMode.PDF else QuickMode.IMAGE; overlay = Overlay.QUICK } }
@@ -403,6 +427,9 @@ fun AppShell(
                     )
                 }
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter))
+                copied?.let { offer ->
+                    CopiedBar(offer, t, onOrder = { CopiedOrder.share(offer.text) }, onDismiss = CopiedOrder::dismiss, modifier = Modifier.align(Alignment.TopCenter))
+                }
                 if (failed) OfflineCard(t) { views[tab]?.reload() }
                 linkState?.let { msg ->
                     Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter)) {
@@ -808,6 +835,28 @@ fun FullScreenOverlay(onClose: () -> Unit, title: String? = null, content: @Comp
                 }
             }
             Box(Modifier.weight(1f)) { content() }
+        }
+    }
+}
+
+/** "📋 Copied message · 01712345678 — Karim Mia  [Make order] ✕" after coming back from Messenger. */
+@Composable
+private fun CopiedBar(offer: CopiedOrder.Offer, t: S, onOrder: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = RoundedCornerShape(14.dp),
+        shadowElevation = 4.dp,
+        modifier = modifier.padding(8.dp).fillMaxWidth().testTag("copied_bar"),
+    ) {
+        Row(Modifier.padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("📋", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text("${t.copiedMessage} · ${offer.phone}", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                Text(offer.preview, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            FilledTonalButton(onClick = onOrder, modifier = Modifier.testTag("copied_make_order")) { Text(t.makeOrder) }
+            IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = t.dismiss) }
         }
     }
 }
