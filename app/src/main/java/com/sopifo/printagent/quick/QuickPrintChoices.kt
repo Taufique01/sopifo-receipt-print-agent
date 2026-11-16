@@ -37,6 +37,15 @@ object QuickPrintChoices {
         pdfFit = ImageFit.entries.firstOrNull { it.name == savedPdfFit } ?: ImageFit.FIT,
     )
 
+    /**
+     * 2.1.21: a PDF (Quick print or Share) is almost always a courier label, so it starts on the
+     * label printer; the receipt printer only when it is the only one set up. With none set up,
+     * the label printer (Quick print then says to add one). Not saved as the last choice, so Text
+     * and Photo keep the printer chosen for them.
+     */
+    fun pdfRole(hasLabel: Boolean, hasReceipt: Boolean): PrinterRole =
+        if (!hasLabel && hasReceipt) PrinterRole.RECEIPT else PrinterRole.LABEL
+
     private const val PREFS = "quick_print"
     private const val KEY_ROLE = "role"
     private const val KEY_SIZE = "label_size"

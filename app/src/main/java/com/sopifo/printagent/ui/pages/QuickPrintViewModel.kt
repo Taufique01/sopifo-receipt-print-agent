@@ -111,6 +111,12 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val pages = withContext(Dispatchers.IO) { renderer.pdfPageCount(uri) }
+                // PDFs start on the label printer (QuickPrintChoices.pdfRole); not saved as the last choice.
+                val role = com.sopifo.printagent.quick.QuickPrintChoices.pdfRole(
+                    hasLabel = c.printers.config(PrinterRole.LABEL) != null,
+                    hasReceipt = c.printers.config(PrinterRole.RECEIPT) != null,
+                )
+                _state.update { it.copy(role = role) }
                 update { it.copy(mode = QuickMode.PDF, pdfUri = uri, pdfPages = pages, pageFrom = 1, pageTo = minOf(pages, MAX_PDF_PAGES)) }
             } catch (e: Exception) {
                 _state.update { it.copy(error = "Couldn't open that PDF: ${e.message}") }

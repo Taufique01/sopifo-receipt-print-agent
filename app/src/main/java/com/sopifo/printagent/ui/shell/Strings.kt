@@ -222,6 +222,8 @@ data class S(
     val autoPrintShared: String,
     /** %d = prints this week. */
     val weekPrints: String,
+    /** Guest home (2.1.21): small link to the how-to guide. */
+    val tutorial: String,
 )
 
 val BN = S(
@@ -429,6 +431,7 @@ val BN = S(
     notNow = "এখন না",
     autoPrintShared = "Share করলেই সরাসরি প্রিন্ট",
     weekPrints = "এই সপ্তাহে %d টি প্রিন্ট",
+    tutorial = "📘 কিভাবে ব্যবহার করবেন (টিউটোরিয়াল)",
 )
 
 val EN = S(
@@ -636,6 +639,7 @@ val EN = S(
     notNow = "Not now",
     autoPrintShared = "Print shared files right away",
     weekPrints = "%d printed this week",
+    tutorial = "📘 How to use Sopifo (tutorial)",
 )
 
 @Composable

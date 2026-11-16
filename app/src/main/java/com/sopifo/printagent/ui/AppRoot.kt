@@ -186,7 +186,7 @@ fun AppRoot(
             )
         }
         // Not signed in: straight to printing (2.1.20).
-        else -> GuestHome(vm, onOpen = { route = it }, onQuick = ::openQuick)
+        else -> GuestHome(vm, onOpen = { route = it }, onQuick = ::openQuick, onTutorial = { showHelp = true })
     }
 }
 

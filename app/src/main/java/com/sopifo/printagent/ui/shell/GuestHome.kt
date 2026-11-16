@@ -19,23 +19,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -54,13 +48,12 @@ import com.sopifo.printagent.ui.theme.StatusBad
 import com.sopifo.printagent.ui.theme.StatusGood
 
 /**
- * Not signed in (2.1.20): the app opens straight on printing. Sign in at the top, the printer,
- * three big print buttons, and one line about the free shop (its features in a sheet). Printing
- * on the phone is never limited; the shop card shows once after the 5th print (✕ = a week).
+ * Not signed in: the app opens straight on printing (2.1.20). 2.1.21: 💬 help at the top, the
+ * printer, three big print buttons, then the big 🚀 free-shop card with Sign in under it (fills
+ * the screen's empty half), and a small link to the how-to guide. Printing is never limited.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GuestHome(vm: AgentViewModel, onOpen: (StartRoute) -> Unit, onQuick: (QuickStart) -> Unit) {
+fun GuestHome(vm: AgentViewModel, onOpen: (StartRoute) -> Unit, onQuick: (QuickStart) -> Unit, onTutorial: () -> Unit) {
     val t = strings()
     val context = LocalContext.current
     val settings = AppSettings.get(context)
@@ -68,9 +61,6 @@ fun GuestHome(vm: AgentViewModel, onOpen: (StartRoute) -> Unit, onQuick: (QuickS
     val configs by vm.printerConfigs.collectAsStateWithLifecycle()
     val status by vm.printerStatus.collectAsStateWithLifecycle()
     val labelSize by settings.labelSize.collectAsStateWithLifecycle()
-    val prints by settings.prints.collectAsStateWithLifecycle()
-    val hiddenUntil by settings.cardHiddenUntil.collectAsStateWithLifecycle()
-    var sheet by rememberSaveable { mutableStateOf(false) }
 
     Column(
         Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState())
@@ -84,15 +74,18 @@ fun GuestHome(vm: AgentViewModel, onOpen: (StartRoute) -> Unit, onQuick: (QuickS
                 Icon(Icons.Outlined.Info, contentDescription = "About Sopifo", modifier = Modifier.size(20.dp))
             }
             Spacer(Modifier.weight(1f))
+            // 💬 Help on WhatsApp; Sign in moved under the free-shop card (2.1.21).
+            TextButton(onClick = { SupportWhatsApp.open(context, "App home (not signed in)") }, modifier = Modifier.testTag("help_whatsapp")) {
+                Icon(AppIcons.Chat, contentDescription = null, tint = WhatsAppGreen, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(4.dp))
+                Text(t.help, fontWeight = FontWeight.Bold, color = WhatsAppGreen)
+            }
             FilterChip(
                 selected = false,
                 onClick = { settings.setLang(if (lang == "bn") "en" else "bn") },
                 label = { Text(if (lang == "bn") "EN" else "বাংলা") },
                 modifier = Modifier.testTag("lang_toggle"),
             )
-            TextButton(onClick = { onOpen(StartRoute.LOGIN) }, modifier = Modifier.testTag("guest_sign_in")) {
-                Text(t.signIn, fontWeight = FontWeight.Black)
-            }
         }
 
         // The printer: name, ready dot, label size; red "Add printer" when none. Opens Printers.
@@ -122,21 +115,6 @@ fun GuestHome(vm: AgentViewModel, onOpen: (StartRoute) -> Unit, onQuick: (QuickS
             }
         }
 
-        // After the 5th print, once: what a free shop adds (✕ hides it for a week).
-        if (GuestNudges.showShopCard(signedIn = false, prints.total, hiddenUntil, System.currentTimeMillis())) {
-            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth().testTag("guest_shop_card")) {
-                Column(Modifier.padding(start = 14.dp, top = 6.dp, bottom = 12.dp, end = 4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(t.cardTitle, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { settings.hideShopCard() }) { Icon(Icons.Filled.Close, contentDescription = t.dismiss) }
-                    }
-                    Text(t.cardBody, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 10.dp))
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = { onOpen(StartRoute.SIGNUP) }, modifier = Modifier.testTag("guest_card_signup")) { Text(t.createFreeShop) }
-                }
-            }
-        }
-
         Text("⚡ ${t.guestPrintNow}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BigTile(AppIcons.Pdf, t.pdf, "guest_quick_pdf", Modifier.weight(1f)) { onQuick(QuickStart.PDF) }
@@ -145,57 +123,17 @@ fun GuestHome(vm: AgentViewModel, onOpen: (StartRoute) -> Unit, onQuick: (QuickS
         }
         Text(t.shareHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        Spacer(Modifier.height(12.dp))
-        // One line about the free shop: tap it for the features; Sign up free goes straight to sign-up.
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
-            modifier = Modifier.fillMaxWidth().testTag("guest_shop_line"),
-        ) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(Modifier.fillMaxWidth().clickable { sheet = true }.testTag("guest_features"), verticalAlignment = Alignment.CenterVertically) {
-                    Text("🏪 ${t.shopLine}", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text("›", style = MaterialTheme.typography.titleLarge)
-                }
-                Button(onClick = { onOpen(StartRoute.SIGNUP) }, modifier = Modifier.align(Alignment.End).testTag("guest_sign_up")) {
-                    Text(t.signUpFree, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
+        Spacer(Modifier.height(8.dp))
+        // The big 🚀 free-shop card (Start now → sign-up) with Sign in under it.
+        com.sopifo.printagent.ui.print.FullFeatures(onLogin = { onOpen(StartRoute.LOGIN) }, onSignup = { onOpen(StartRoute.SIGNUP) })
 
-    if (sheet) {
-        ModalBottomSheet(onDismissRequest = { sheet = false }) {
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 24.dp).testTag("guest_feature_sheet"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("🔒 ${t.withFreeShop}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                listOf(
-                    Triple(AppIcons.Truck, t.featCourier, t.featCourierSub),
-                    Triple(AppIcons.Print, t.featBulk, t.featBulkSub),
-                    Triple(AppIcons.Chat, t.featCapture, t.featCaptureSub),
-                    Triple(AppIcons.Sparkle, t.featAi, t.featAiSub),
-                    Triple(AppIcons.Users, t.featFraud, t.featFraudSub),
-                    Triple(AppIcons.Cash, t.featPos, t.featPosSub),
-                ).forEach { (icon, title, sub) ->
-                    Row(
-                        Modifier.fillMaxWidth().clickable { sheet = false; onOpen(StartRoute.SIGNUP) }.padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Column(Modifier.weight(1f)) {
-                            Text(title, fontWeight = FontWeight.Bold)
-                            Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-                Button(onClick = { sheet = false; onOpen(StartRoute.SIGNUP) }, modifier = Modifier.fillMaxWidth().testTag("sheet_sign_up")) {
-                    Text(t.signUpFree, fontWeight = FontWeight.Bold)
-                }
-                TextButton(onClick = { sheet = false; onOpen(StartRoute.LOGIN) }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("sheet_sign_in")) {
-                    Text(t.orSignIn)
-                }
-            }
-        }
+        // Small link to the how-to guide (sopifo.com/help/printer-setup, in the app).
+        Text(
+            t.tutorial,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.align(Alignment.CenterHorizontally).clickable(onClick = onTutorial).padding(8.dp).testTag("guest_tutorial"),
+        )
     }
 }
 

@@ -48,4 +48,18 @@ class QuickPrintChoicesTest {
         assertEquals(ImageFit.FIT, odd.imageFit)
         assertEquals(ImageFit.FIT, odd.pdfFit)
     }
+
+    // 2.1.21: a PDF (Quick print or Share) is almost always a courier label: the label printer.
+    @Test fun pdfPrintsOnTheLabelPrinter() {
+        assertEquals(PrinterRole.LABEL, QuickPrintChoices.pdfRole(hasLabel = true, hasReceipt = true))
+        assertEquals(PrinterRole.LABEL, QuickPrintChoices.pdfRole(hasLabel = true, hasReceipt = false))
+    }
+
+    @Test fun pdfUsesTheReceiptPrinterWhenItIsTheOnlyOne() {
+        assertEquals(PrinterRole.RECEIPT, QuickPrintChoices.pdfRole(hasLabel = false, hasReceipt = true))
+    }
+
+    @Test fun pdfWithNoPrinterAsksForALabelPrinter() {
+        assertEquals(PrinterRole.LABEL, QuickPrintChoices.pdfRole(hasLabel = false, hasReceipt = false))
+    }
 }

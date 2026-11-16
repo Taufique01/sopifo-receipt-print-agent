@@ -7,6 +7,7 @@ import com.sopifo.printagent.data.db.PrinterProtocol
 import com.sopifo.printagent.print.PrintDataBuilder
 import com.sopifo.printagent.quick.PdfDarkness
 import com.sopifo.printagent.quick.PdfStretch
+import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.quick.QuickPrintChoices
 import com.sopifo.printagent.quick.QuickPrintRenderer
 import com.sopifo.printagent.quick.QuickTarget
@@ -54,7 +55,20 @@ object SharedAutoPrint {
     /** A shared file while auto-print is on. False = not possible here (Quick print should open). */
     fun begin(context: Context, c: AppContainer, item: SharedFile.Item, signedIn: Boolean): Boolean {
         val settings = AppSettings.get(context)
-        val choice = QuickPrintChoices.load(context, settings.labelSize.value)
+        val saved = QuickPrintChoices.load(context, settings.labelSize.value)
+        // A shared PDF goes to the label printer (2.1.21); a photo to the printer used last.
+        val choice = if (item.isPdf) {
+            saved.copy(
+                role = kotlinx.coroutines.runBlocking {
+                    QuickPrintChoices.pdfRole(
+                        hasLabel = c.printers.config(PrinterRole.LABEL) != null,
+                        hasReceipt = c.printers.config(PrinterRole.RECEIPT) != null,
+                    )
+                },
+            )
+        } else {
+            saved
+        }
         val printer = kotlinx.coroutines.runBlocking { c.printers.config(choice.role) } ?: return false
         val today = GuestNudges.dayOf(System.currentTimeMillis())
         val tip = GuestNudges.showStripTip(signedIn, settings.stripTipDay, today)

@@ -3,6 +3,19 @@ package com.sopifo.printagent.ui.pages
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import com.sopifo.printagent.ui.shell.strings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -67,8 +80,9 @@ fun QuickPrintScreen(
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { vm.pickImage(it) }
     val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { vm.pickPdf(it) }
 
+    Column(Modifier.fillMaxSize()) {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (showTitle) ScreenTitle("Quick print")
@@ -207,9 +221,63 @@ fun QuickPrintScreen(
             }
         }
 
-        Button(onClick = vm::print, enabled = !s.busy, modifier = Modifier.fillMaxWidth().testTag("quick_print_button")) {
-            if (s.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-            Text(if (s.busy) "  Preparing…" else "Print")
+    }
+        // 2.1.21: Print never scrolls away (a shared PDF opens at the top), with the printer and
+        // label size right above it, so the size is seen — and changed — just before printing.
+        PrintBar(s, onRole = { r -> vm.update { it.copy(role = r) } }, onSize = { z -> vm.update { it.copy(labelSize = z) } }, onPrint = vm::print)
+    }
+}
+
+@Composable
+private fun PrintBar(s: QuickPrintState, onRole: (PrinterRole) -> Unit, onSize: (QuickLabelSize) -> Unit, onPrint: () -> Unit) {
+    val t = strings()
+    var menu by remember { mutableStateOf(false) }
+    Surface(shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box {
+                Row(
+                    Modifier.fillMaxWidth().clickable { menu = true }.testTag("quick_print_target"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(if (s.printerIsLabel || s.role == PrinterRole.LABEL) "🏷" else "🧾")
+                    Text(
+                        when {
+                            s.printerMissing -> "${if (s.role == PrinterRole.LABEL) t.labelPrinter else t.receiptPrinter} · ${t.addPrinter}"
+                            s.printerIsLabel -> "${t.labelPrinter} · ${s.labelSize.title}"
+                            else -> t.receiptPrinter
+                        },
+                        fontWeight = FontWeight.Bold,
+                        color = if (s.printerMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).testTag("quick_print_target_text"),
+                    )
+                    Text(t.change, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    listOf(PrinterRole.LABEL to t.labelPrinter, PrinterRole.RECEIPT to t.receiptPrinter).forEach { (role, name) ->
+                        DropdownMenuItem(
+                            text = { Text((if (s.role == role) "✓ " else "") + name, fontWeight = FontWeight.Bold) },
+                            onClick = { onRole(role); if (role == PrinterRole.RECEIPT) menu = false },
+                        )
+                    }
+                    if (s.printerIsLabel) {
+                        HorizontalDivider()
+                        QuickLabelSize.entries.forEach { size ->
+                            DropdownMenuItem(
+                                text = { Text((if (s.labelSize == size) "✓ " else "") + size.title) },
+                                onClick = { onSize(size); menu = false },
+                                modifier = Modifier.testTag("quick_size_${size.name.lowercase()}"),
+                            )
+                        }
+                    }
+                }
+            }
+            Button(onClick = onPrint, enabled = !s.busy, modifier = Modifier.fillMaxWidth().height(52.dp).testTag("quick_print_button")) {
+                if (s.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                Text(if (s.busy) "  Preparing…" else "🖨  ${t.printNow}", fontWeight = FontWeight.Black)
+            }
         }
     }
 }
