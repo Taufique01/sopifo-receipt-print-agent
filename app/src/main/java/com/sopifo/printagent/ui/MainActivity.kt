@@ -45,13 +45,17 @@ class MainActivity : FragmentActivity() {
         setContent {
             SopifoTheme {
                 // Below the required version (Admin → App versions): only "Update Sopifo to continue".
-                com.sopifo.printagent.ui.shell.UpdateGate {
-                    AppRoot(
-                        viewModel,
-                        onRequestPermissions = ::requestRuntimePermissions,
-                        openRequest = openRequest.value,
-                        onOpenHandled = { openRequest.value = null },
-                    )
+                androidx.compose.foundation.layout.Box {
+                    com.sopifo.printagent.ui.shell.UpdateGate {
+                        AppRoot(
+                            viewModel,
+                            onRequestPermissions = ::requestRuntimePermissions,
+                            openRequest = openRequest.value,
+                            onOpenHandled = { openRequest.value = null },
+                        )
+                    }
+                    // Share → auto-print: "Printing 3 … Cancel" over whatever is on screen.
+                    com.sopifo.printagent.ui.shell.AutoPrintStrip()
                 }
             }
         }
@@ -91,7 +95,12 @@ class MainActivity : FragmentActivity() {
         }
         if (shared != null) {
             val type = intent.type ?: contentResolver.getType(shared).orEmpty()
-            SharedFile.item.value = SharedFile.Item(shared, isPdf = type.contains("pdf") || shared.toString().endsWith(".pdf", ignoreCase = true))
+            val item = SharedFile.Item(shared, isPdf = type.contains("pdf") || shared.toString().endsWith(".pdf", ignoreCase = true))
+            // 2.1.20: print at once (the seller said Yes once); else Quick print opens with it.
+            val c = (application as com.sopifo.printagent.SopifoApp).container
+            val auto = com.sopifo.printagent.ui.shell.AppSettings.get(this).autoPrintShared.value &&
+                com.sopifo.printagent.ui.shell.SharedAutoPrint.begin(this, c, item, signedIn = com.sopifo.printagent.ui.shell.WebSession.isLoggedIn(c))
+            if (!auto) SharedFile.item.value = item
         }
     }
 

@@ -57,13 +57,4 @@ class SetupChecklistTest {
         val done = SetupChecklist.states(none.copy(hasReceipt = true), f)
         assertFalse(SetupChecklist.anyMissing(done))
     }
-
-    @Test fun twentyThreeFreePrintsFromOtherAppsBeforeLogin() {
-        assertTrue(SetupChecklist.allowServicePrint(loggedIn = false, freeUsed = 0))
-        assertTrue(SetupChecklist.allowServicePrint(loggedIn = false, freeUsed = 22))
-        assertFalse(SetupChecklist.allowServicePrint(loggedIn = false, freeUsed = 23))
-        assertEquals(20, SetupChecklist.freeLeft(3))
-        assertEquals(0, SetupChecklist.freeLeft(30))
-        assertTrue(SetupChecklist.allowServicePrint(loggedIn = true, freeUsed = 50))
-    }
 }

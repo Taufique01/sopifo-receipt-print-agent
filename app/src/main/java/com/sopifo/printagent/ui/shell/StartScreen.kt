@@ -59,74 +59,8 @@ import com.sopifo.printagent.ui.pages.WebLinks
 import com.sopifo.printagent.ui.theme.AppIcons
 import com.sopifo.printagent.ui.theme.StatusGood
 
-enum class StartRoute { LOGIN, SIGNUP, PRINTERS, ABOUT }
-
-/**
- * First open, no account: set up the printer and try prints. Everything else is behind
- * "Log in for full features" (the normal sign-up; a shop is only made through Create shop).
- */
-@Composable
-fun StartScreen(notice: String?, onOpen: (StartRoute) -> Unit) {
-    val t = strings()
-    val settings = AppSettings.get(LocalContext.current)
-    val lang by settings.lang.collectAsStateWithLifecycle()
-    Column(
-        // Nav-bar padding + extra room at the end: the Log in button no longer touches the bottom.
-        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState())
-            .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 32.dp).testTag("start_screen"),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            HelpIcon(page = "Start")
-            IconButton(onClick = { onOpen(StartRoute.ABOUT) }, modifier = Modifier.testTag("start_about")) {
-                Icon(androidx.compose.material.icons.Icons.Outlined.Info, contentDescription = "About Sopifo")
-            }
-            Spacer(Modifier.weight(1f))
-            FilterChip(selected = lang == "bn", onClick = { settings.setLang("bn") }, label = { Text("বাংলা") }, modifier = Modifier.testTag("lang_bn"))
-            Spacer(Modifier.size(6.dp))
-            FilterChip(selected = lang == "en", onClick = { settings.setLang("en") }, label = { Text("EN") }, modifier = Modifier.testTag("lang_en"))
-        }
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            // The Sopifo logo (bag + name); on a white pill in dark mode so the dark name stays readable.
-            val dark = androidx.compose.foundation.isSystemInDarkTheme()
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = if (dark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.Transparent,
-                modifier = Modifier.testTag("start_logo"),
-            ) {
-                androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(com.sopifo.printagent.R.drawable.sopifo_logo),
-                    contentDescription = t.appName,
-                    modifier = Modifier.padding(horizontal = if (dark) 14.dp else 0.dp, vertical = if (dark) 8.dp else 0.dp).height(54.dp),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(t.tagline, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        notice?.let {
-            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth()) {
-                Text("🔓 $it", Modifier.padding(12.dp), fontWeight = FontWeight.Bold)
-            }
-        }
-        BigAction(AppIcons.Print, t.setUpPrinter, primary = true, tag = "start_printers") { onOpen(StartRoute.PRINTERS) }
-        HorizontalDivider(Modifier.padding(vertical = 4.dp))
-        com.sopifo.printagent.ui.print.FullFeatures(onLogin = { onOpen(StartRoute.LOGIN) }, onSignup = { onOpen(StartRoute.SIGNUP) })
-    }
-}
-
-@Composable
-private fun BigAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, primary: Boolean, tag: String, onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = if (primary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
-        modifier = Modifier.fillMaxWidth().height(76.dp).testTag(tag).clickable(onClick = onClick),
-    ) {
-        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(34.dp), tint = if (primary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer)
-            Text(label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = if (primary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer)
-        }
-    }
-}
+/** Screens over the guest home (not signed in): sign in / up, printers, about, Quick print. */
+enum class StartRoute { LOGIN, SIGNUP, PRINTERS, ABOUT, QUICK }
 
 /** Sign in / sign up on the website (app mode). Lands on the dashboard → [onDone]. */
 @Composable

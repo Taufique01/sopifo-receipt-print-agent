@@ -115,6 +115,8 @@ fun PrinterSetupScreen(
     val context = LocalContext.current
     val settings = AppSettings.get(context)
     val flags by settings.setup.collectAsStateWithLifecycle()
+    val autoPrint by settings.autoPrintShared.collectAsStateWithLifecycle()
+    val prints by settings.prints.collectAsStateWithLifecycle()
     val configs by vm.configs.collectAsStateWithLifecycle()
     val status by vm.status.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
@@ -181,7 +183,7 @@ fun PrinterSetupScreen(
                             SetupStep.SIZE -> StepSize(vm, t, label?.labelGapMm, onNext = { vm.confirmSize(); next(SetupStep.SIZE) })
                             SetupStep.TEST -> StepTest(vm, t, onNext = { next(SetupStep.TEST) })
                             SetupStep.RECEIPT -> StepReceipt(vm, t, hasLabel = label != null, receipt?.name, receipt?.paperWidthMm, onNext = { next(SetupStep.RECEIPT) }, onSkip = { vm.skipReceipt(); next(SetupStep.RECEIPT) })
-                            SetupStep.SERVICE -> StepService(t, flags.printServiceUsed, if (loggedIn) null else SetupChecklist.freeLeft(flags.freeServicePrints), onNext = { next(SetupStep.SERVICE) })
+                            SetupStep.SERVICE -> StepService(t, flags.printServiceUsed, onNext = { next(SetupStep.SERVICE) })
                         }
                     }
                     else -> ChecklistView(
@@ -200,6 +202,9 @@ fun PrinterSetupScreen(
                         onTestLabel = { vm.printSample(PrintersViewModel.Sample.TEST_LABEL) },
                         onTestReceipt = { vm.printSample(PrintersViewModel.Sample.TEST_RECEIPT) },
                         onQuick = onQuick,
+                        autoPrint = autoPrint,
+                        onAutoPrint = settings::setAutoPrintShared,
+                        weekPrints = prints.thisWeek(System.currentTimeMillis()),
                         onAdvanced = onAdvanced,
                         onRunAgain = { guideStep = SetupStep.LABEL },
                         onOpenWeb = onOpenWeb,
@@ -439,7 +444,7 @@ private fun StepReceipt(vm: PrintersViewModel, t: S, hasLabel: Boolean, current:
 
 /** Step 5: turn on "Sopifo" in Android's print menu, open the courier app, print → ✅ by itself. */
 @Composable
-private fun StepService(t: S, worked: Boolean, freeLeft: Int?, onNext: () -> Unit) {
+private fun StepService(t: S, worked: Boolean, onNext: () -> Unit) {
     val context = LocalContext.current
     fun open(url: String) = runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     StepTitle(AppIcons.Truck, t.stepServiceTitle)
@@ -458,10 +463,6 @@ private fun StepService(t: S, worked: Boolean, freeLeft: Int?, onNext: () -> Uni
             if (worked) Icon(Icons.Filled.Check, null, tint = StatusGood) else CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             Text(if (worked) t.itWorked else t.waitingPrint, fontWeight = FontWeight.Bold)
         }
-    }
-    // Logged out: how many prints from other apps are still free.
-    if (freeLeft != null) {
-        Text("🎁 $freeLeft / ${SetupChecklist.FREE_SERVICE_PRINTS} · ${t.fullFeatures}", style = MaterialTheme.typography.bodySmall, color = if (freeLeft == 0) StatusBad else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("free_left"))
     }
     if (worked) BigButton(t.finish, "guide_finish", onClick = onNext)
     else FilledTonalButton(onClick = onNext, modifier = Modifier.testTag("guide_later")) { Text("${t.later} →") }
@@ -502,6 +503,9 @@ private fun ChecklistView(
     onTestLabel: () -> Unit,
     onTestReceipt: () -> Unit,
     onQuick: ((QuickStart) -> Unit)?,
+    autoPrint: Boolean,
+    onAutoPrint: (Boolean) -> Unit,
+    weekPrints: Int,
     onAdvanced: () -> Unit,
     onRunAgain: () -> Unit,
     onOpenWeb: ((String) -> Unit)?,
@@ -514,7 +518,37 @@ private fun ChecklistView(
         SetupStep.RECEIPT to t.stepReceiptTitle,
         SetupStep.SERVICE to t.stepServiceTitle,
     )
-    STEP_ORDER.forEachIndexed { i, step ->
+    // 2.1.20: printing first; the setup steps fold into one line once nothing is missing.
+    if (onQuick != null) {
+        Text("⚡ ${t.quickPrint}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Tile(AppIcons.Pdf, t.pdf, Modifier.weight(1f).testTag("quick_pdf")) { onQuick(QuickStart.PDF) }
+            Tile(AppIcons.Photo, t.photo, Modifier.weight(1f).testTag("quick_photo")) { onQuick(QuickStart.PHOTO) }
+            Tile(AppIcons.Bold, t.text, Modifier.weight(1f).testTag("quick_text")) { onQuick(QuickStart.TEXT) }
+        }
+    }
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val allDone = !SetupChecklist.anyMissing(states)
+    if (allDone && !expanded) {
+        val summary = buildList {
+            add(detail(SetupStep.LABEL))
+            if (states[SetupStep.SIZE] == StepState.DONE) add(detail(SetupStep.SIZE))
+            if (states[SetupStep.RECEIPT] == StepState.DONE) add(detail(SetupStep.RECEIPT))
+        }.filter { it.isNotBlank() && it != "—" }.joinToString(" · ")
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.fillMaxWidth().testTag("setup_summary"),
+        ) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(shape = CircleShape, color = StatusGood, modifier = Modifier.size(30.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(18.dp)) }
+                }
+                Text(summary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                FilledTonalButton(onClick = { expanded = true }, modifier = Modifier.testTag("setup_expand")) { Text(t.change) }
+            }
+        }
+    } else STEP_ORDER.forEachIndexed { i, step ->
         val state = states[step] ?: StepState.MISSING
         val color = when (state) { StepState.DONE -> StatusGood; StepState.MISSING -> StatusBad; StepState.SKIPPED -> StatusNeutral }
         Surface(
@@ -549,12 +583,14 @@ private fun ChecklistView(
         Tile(AppIcons.Tag, t.testLabel, Modifier.weight(1f).testTag("check_test_label"), onClick = onTestLabel)
         Tile(AppIcons.Receipt, t.testReceipt, Modifier.weight(1f).testTag("check_test_receipt"), onClick = onTestReceipt)
     }
-    if (onQuick != null) {
-        Text("⚡ ${t.quickPrint}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Tile(AppIcons.Pdf, t.pdf, Modifier.weight(1f).testTag("quick_pdf")) { onQuick(QuickStart.PDF) }
-            Tile(AppIcons.Photo, t.photo, Modifier.weight(1f).testTag("quick_photo")) { onQuick(QuickStart.PHOTO) }
-            Tile(AppIcons.Bold, t.text, Modifier.weight(1f).testTag("quick_text")) { onQuick(QuickStart.TEXT) }
+    // Share → print at once (asked once after the first shared print); this week's count.
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(t.autoPrintShared, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                androidx.compose.material3.Switch(checked = autoPrint, onCheckedChange = onAutoPrint, modifier = Modifier.testTag("auto_print_switch"))
+            }
+            if (weekPrints > 0) Text(t.weekPrints.format(weekPrints), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("week_prints"))
         }
     }
     // The shop-wide side lives on the website (Printing): how labels look, what printed.

@@ -9,14 +9,13 @@ import androidx.core.content.ContextCompat
 import com.sopifo.printagent.R
 import com.sopifo.printagent.service.RunNotifications
 import com.sopifo.printagent.ui.MainActivity
-import com.sopifo.printagent.ui.print.SetupChecklist
 
 /**
  * Print → Sopifo turned a print down. Android only shows its own "Printer error", so Sopifo also
  * posts the real reason with one button that fixes it (Log in / Open Printers / Open Sopifo).
  */
 object PrintRefusal {
-    enum class Reason { LOGIN, NO_LABEL_PRINTER, OTHER, PAGES_CUT, PLAN_LIMIT }
+    enum class Reason { NO_LABEL_PRINTER, OTHER, PAGES_CUT, PLAN_LIMIT }
 
     /** Labels from other apps: at most this many pages (a courier label is 1–2 pages). */
     const val MAX_PAGES = 5
@@ -34,13 +33,6 @@ object PrintRefusal {
         val en = lang == "en"
         val title = if (en) "Sopifo couldn't print" else "Sopifo প্রিন্ট করতে পারেনি"
         return when (reason) {
-            Reason.LOGIN -> Notice(
-                title,
-                if (en) "${SetupChecklist.FREE_SERVICE_PRINTS} free prints from other apps are used up. Log in to Sopifo to keep printing."
-                else "অন্য অ্যাপ থেকে ${SetupChecklist.FREE_SERVICE_PRINTS}টি ফ্রি প্রিন্ট শেষ। প্রিন্ট চালিয়ে যেতে Sopifo-তে লগ ইন করুন।",
-                if (en) "Log in" else "লগ ইন",
-                MainActivity.OPEN_LOGIN,
-            )
             Reason.NO_LABEL_PRINTER -> Notice(
                 title,
                 if (en) "No label printer is set. Choose your label printer in Sopifo → Printers."

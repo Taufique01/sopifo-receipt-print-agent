@@ -82,6 +82,10 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
 
     private var previewJob: Job? = null
 
+    /** Bumped each time a print starts (Share: ask once whether to print shared files at once). */
+    private val _started = MutableStateFlow(0)
+    val started: StateFlow<Int> = _started.asStateFlow()
+
     init { refreshPreview() }
 
     fun update(change: (QuickPrintState) -> QuickPrintState) {
@@ -178,6 +182,8 @@ class QuickPrintViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 c.runner.start("Quick print", "quick", s.role, items)
+                com.sopifo.printagent.ui.shell.AppSettings.get(getApplication()).countPrints(items.size)
+                _started.value += 1
                 _message.value = "Printing ${items.size}… you can lock the phone"
             } catch (e: Exception) {
                 _message.value = "Couldn't prepare the print: ${e.message}"

@@ -130,7 +130,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** The bottom bar, like the website's phone menu: Home · AI · (＋) · Orders · Store. */
-enum class ShellTab { HOME, AI, PLUS, ORDERS, STORE }
+enum class ShellTab { HOME, COURIERS, PLUS, ORDERS, STORE }
 
 /** Full-screen native pages over the shell. */
 enum class Overlay { PRINTERS, QUICK, ADVANCED, RECENT, ABOUT }
@@ -154,7 +154,7 @@ private val STORE_ITEMS = listOf(
     StoreItem("pos", AppIcons.Cash) { it.pos },
     StoreItem("dashboard/print", AppIcons.Print) { it.printingMenu },
     StoreItem("dashboard/customers", AppIcons.Users) { it.customers },
-    StoreItem("dashboard/couriers", AppIcons.Truck) { it.couriers },
+    StoreItem("dashboard/content-studio", AppIcons.Sparkle) { it.studio },
     StoreItem("dashboard/inventory", AppIcons.Barcode) { it.inventory },
     StoreItem("dashboard/facebook", AppIcons.Chat) { it.facebook },
     StoreItem("dashboard/storefront", AppIcons.Store) { it.storefront },
@@ -286,7 +286,7 @@ fun AppShell(
     }
     fun pathOf(t: ShellTab): String = when (t) {
         ShellTab.HOME -> "dashboard"
-        ShellTab.AI -> "dashboard/content-studio"
+        ShellTab.COURIERS -> "dashboard/couriers"
         ShellTab.PLUS -> if (shop.pos) "pos" else "dashboard/orders/new"
         ShellTab.ORDERS -> "dashboard/orders"
         ShellTab.STORE -> storePath
@@ -300,6 +300,12 @@ fun AppShell(
         showStore = false
         if (path == "#printers") {
             overlay = Overlay.PRINTERS
+            return
+        }
+        // Couriers has its own tab (2.1.20): the setup card's courier step goes there.
+        if (path == pathOf(ShellTab.COURIERS)) {
+            viewFor(ShellTab.COURIERS)
+            tab = ShellTab.COURIERS
             return
         }
         storePath = path
@@ -532,11 +538,31 @@ fun AppShell(
 private val loadingState = mutableStateOf(Triple(ShellTab.HOME, false, false))
 private fun setLoad(tab: ShellTab, loading: Boolean, failed: Boolean) { loadingState.value = Triple(tab, loading, failed) }
 
+/** Quick print in a full-screen overlay (signed in, and the guest home), with a shared file if any. */
 @Composable
-private fun QuickOverlay(mode: QuickMode) {
+internal fun QuickOverlay(mode: QuickMode) {
     val qvm: QuickPrintViewModel = viewModel()
     val snackbar = remember { SnackbarHostState() }
     val shared by SharedFile.item.collectAsStateWithLifecycle()
+    val settings = AppSettings.get(LocalContext.current)
+    val t = strings()
+    // The first shared file printed: offer to print shared files at once from now on (asked once).
+    val started by qvm.started.collectAsStateWithLifecycle()
+    var ask by remember { mutableStateOf(false) }
+    LaunchedEffect(started) { if (started > 0 && shared != null && !settings.autoPrintAsked) ask = true }
+    if (ask) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { ask = false; settings.setAutoPrintShared(false) },
+            title = { Text(t.askAutoTitle) },
+            text = { Text(t.askAutoBody) },
+            confirmButton = {
+                androidx.compose.material3.Button(onClick = { ask = false; settings.setAutoPrintShared(true) }, modifier = Modifier.testTag("auto_print_yes")) {
+                    Text(t.askAutoYes)
+                }
+            },
+            dismissButton = { TextButton(onClick = { ask = false; settings.setAutoPrintShared(false) }) { Text(t.notNow) } },
+        )
+    }
     LaunchedEffect(mode, shared) {
         val file = shared
         when {
@@ -598,7 +624,8 @@ private fun ShellBottomBar(t: S, tab: ShellTab, pos: Boolean, storeOpen: Boolean
     ) {
         Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             BarCell(AppIcons.Dashboard, t.overview, tab == ShellTab.HOME && !storeOpen, "tab_home") { onTab(ShellTab.HOME) }
-            BarCell(AppIcons.Sparkle, t.studio, tab == ShellTab.AI && !storeOpen, "tab_ai") { onTab(ShellTab.AI) }
+            // 2.1.20: Couriers here (used every day); Content Studio moved to the Store menu.
+            BarCell(AppIcons.Truck, t.couriers, tab == ShellTab.COURIERS && !storeOpen, "tab_couriers") { onTab(ShellTab.COURIERS) }
             // The raised round button, like the website's (＋) / POS.
             Column(
                 Modifier.weight(1f).fillMaxHeight().clickable(onClick = { onTab(ShellTab.PLUS) }).testTag("tab_plus"),

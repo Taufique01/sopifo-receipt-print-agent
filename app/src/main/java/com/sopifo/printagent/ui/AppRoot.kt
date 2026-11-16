@@ -64,7 +64,9 @@ import com.sopifo.printagent.ui.shell.AppShell
 import com.sopifo.printagent.ui.shell.FullScreenOverlay
 import com.sopifo.printagent.ui.shell.SharedFile
 import com.sopifo.printagent.ui.shell.StartRoute
-import com.sopifo.printagent.ui.shell.StartScreen
+import com.sopifo.printagent.ui.shell.GuestHome
+import com.sopifo.printagent.ui.shell.QuickOverlay
+import com.sopifo.printagent.ui.shell.SharedAutoPrint
 import com.sopifo.printagent.ui.shell.WebLoginScreen
 import com.sopifo.printagent.ui.shell.WebSession
 import com.sopifo.printagent.ui.print.PrinterSetupScreen
@@ -116,10 +118,32 @@ fun AppRoot(
             MainActivity.OPEN_PRINTERS -> { route = StartRoute.PRINTERS; onOpenHandled() }
         }
     }
-    // Share → Sopifo needs an account (full features): the start screen says so; after login it opens.
+    // Share → Sopifo works without an account too (2.1.20): Quick print opens with the file.
     val shared by SharedFile.item.collectAsStateWithLifecycle()
     var advanced by rememberSaveable { mutableStateOf(false) }
+    var quickMode by rememberSaveable { mutableStateOf(QuickMode.PDF) }
     val t = strings()
+    LaunchedEffect(shared, loggedIn, station) {
+        val file = shared ?: return@LaunchedEffect
+        if (loggedIn || station) return@LaunchedEffect
+        quickMode = if (file.isPdf) QuickMode.PDF else QuickMode.IMAGE
+        route = StartRoute.QUICK
+    }
+    // "Try →" on the auto-print strip's tip: sign-up.
+    val signUpAsked by SharedAutoPrint.signUpRequested.collectAsStateWithLifecycle()
+    LaunchedEffect(signUpAsked, loggedIn) {
+        if (!signUpAsked) return@LaunchedEffect
+        SharedAutoPrint.signUpRequested.value = false
+        if (!loggedIn && !station) route = StartRoute.SIGNUP
+    }
+    fun openQuick(q: com.sopifo.printagent.ui.print.QuickStart) {
+        quickMode = when (q) {
+            com.sopifo.printagent.ui.print.QuickStart.PDF -> QuickMode.PDF
+            com.sopifo.printagent.ui.print.QuickStart.PHOTO -> QuickMode.IMAGE
+            com.sopifo.printagent.ui.print.QuickStart.TEXT -> QuickMode.TEXT
+        }
+        route = StartRoute.QUICK
+    }
 
     when {
         registered == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -148,17 +172,21 @@ fun AppRoot(
         route == StartRoute.ABOUT -> FullScreenPage(onClose = { route = null }) {
             com.sopifo.printagent.ui.shell.AboutScreen(onClose = { route = null })
         }
+        route == StartRoute.QUICK -> FullScreenOverlay(onClose = { route = null; SharedFile.item.value = null }, title = t.quickPrint) {
+            QuickOverlay(quickMode)
+        }
         route == StartRoute.PRINTERS -> FullScreenPage(onClose = { route = null }) {
             PrinterSetupScreen(
                 onBack = { route = null },
                 onAdvanced = { advanced = true },
-                onQuick = null,
+                onQuick = ::openQuick,
                 loggedIn = false,
                 onLogin = { route = StartRoute.LOGIN },
                 onSignup = { route = StartRoute.SIGNUP },
             )
         }
-        else -> StartScreen(notice = if (shared != null) t.loginToPrintFile else null, onOpen = { route = it })
+        // Not signed in: straight to printing (2.1.20).
+        else -> GuestHome(vm, onOpen = { route = it }, onQuick = ::openQuick)
     }
 }
 

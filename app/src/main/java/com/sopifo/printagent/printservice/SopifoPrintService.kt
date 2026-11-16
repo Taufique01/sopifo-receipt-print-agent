@@ -112,17 +112,8 @@ class SopifoPrintService : PrintService() {
         val settings = AppSettings.get(this)
         val signals = WebSession.accountSignals(c)
         val loggedIn = signals.values.any { it }
-        AppLog.i(TAG, "Print → Sopifo job", "logged_in" to loggedIn, "signals" to signals.toString(), "free_used" to settings.setup.value.freeServicePrints)
-        // A few prints work before logging in (enough to finish printer setup), then login.
-        if (!SetupChecklist.allowServicePrint(loggedIn, settings.setup.value.freeServicePrints)) {
-            AppLog.i(TAG, "Free print limit hit", "limit" to SetupChecklist.FREE_SERVICE_PRINTS)
-            PrintRefusal.show(this, PrintRefusal.Reason.LOGIN, settings.lang.value)
-            printJob.fail(
-                if (settings.lang.value == "en") "${SetupChecklist.FREE_SERVICE_PRINTS} free prints used. Open Sopifo and log in to keep printing from other apps"
-                else "${SetupChecklist.FREE_SERVICE_PRINTS}টি ফ্রি প্রিন্ট শেষ। প্রিন্ট চালিয়ে যেতে Sopifo খুলে লগ ইন করুন",
-            )
-            return
-        }
+        // 2.1.20: no limit before signing in (printing on the phone is free; the account adds the rest).
+        AppLog.i(TAG, "Print → Sopifo job", "logged_in" to loggedIn, "signals" to signals.toString())
         val label = runBlocking { c.printers.config(PrinterRole.LABEL) }
         if (label == null) {
             AppLog.i(TAG, "No label printer")
@@ -179,8 +170,9 @@ class SopifoPrintService : PrintService() {
                 }
                 val runId = c.runner.start(title, PrintRunner.SOURCE_OTHER_APPS, PrinterRole.LABEL, items)
                 if (total > pages) PrintRefusal.show(this@SopifoPrintService, PrintRefusal.Reason.PAGES_CUT, settings.lang.value, "$pages/$total")
-                // Printer setup step 5 ✓ ("Print with Sopifo" works); counts the free prints.
-                settings.updateSetup { it.copy(printServiceUsed = true, freeServicePrints = if (loggedIn) it.freeServicePrints else it.freeServicePrints + 1) }
+                // Printer setup step 5 ✓ ("Print with Sopifo" works); this week's print count.
+                settings.updateSetup { it.copy(printServiceUsed = true) }
+                settings.countPrints(items.size)
                 AppLog.i(TAG, "Print → Sopifo queued", "pages" to items.size, "printer" to label.name)
                 val ended = c.runner.awaitFinish(runId, JOB_OPEN_MAX_MS)
                 outcome = when {

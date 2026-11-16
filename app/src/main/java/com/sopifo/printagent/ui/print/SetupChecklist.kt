@@ -36,11 +36,6 @@ data class PrinterFacts(
  * answered ❌. Pure, so it is unit-tested.
  */
 object SetupChecklist {
-    /** Prints through Android's Print menu before logging in (3, raised by 10 on 2026-11-08). */
-    const val FREE_SERVICE_PRINTS = 23
-
-    fun freeLeft(freeUsed: Int) = (FREE_SERVICE_PRINTS - freeUsed).coerceAtLeast(0)
-
     fun states(p: PrinterFacts, f: SetupFlags): Map<SetupStep, StepState> {
         if (f.labelSkipped && !p.hasLabel) {
             // Receipts only: the label steps don't apply; the receipt printer becomes the need.
@@ -68,7 +63,4 @@ object SetupChecklist {
 
     /** The first step still missing (where "Fix" or the guide goes), or null. */
     fun firstMissing(states: Map<SetupStep, StepState>): SetupStep? = SetupStep.entries.firstOrNull { states[it] == StepState.MISSING }
-
-    /** A print through "Sopifo" in the Print menu: always when logged in, else the first few. */
-    fun allowServicePrint(loggedIn: Boolean, freeUsed: Int) = loggedIn || freeUsed < FREE_SERVICE_PRINTS
 }

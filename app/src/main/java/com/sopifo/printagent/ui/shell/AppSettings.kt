@@ -125,6 +125,55 @@ class AppSettings private constructor(context: Context) {
 
     fun setTestPrinted() = updateSetup { it.copy(testPrinted = true, testFailed = false) }
 
+    /**
+     * Share → Sopifo prints at once with the last Quick print choices (2.1.20). Offered once,
+     * after the first shared file printed from Quick print; switched on Printers.
+     */
+    private val _autoPrintShared = MutableStateFlow(prefs.getBoolean(KEY_AUTO_SHARED, false))
+    val autoPrintShared: StateFlow<Boolean> = _autoPrintShared.asStateFlow()
+    fun setAutoPrintShared(on: Boolean) {
+        prefs.edit {
+            putBoolean(KEY_AUTO_SHARED, on)
+            putBoolean(KEY_AUTO_ASKED, true)
+        }
+        _autoPrintShared.value = on
+    }
+    /** The "print shared files right away?" question was answered (either way). */
+    val autoPrintAsked: Boolean get() = prefs.getBoolean(KEY_AUTO_ASKED, false)
+
+    /** Prints made on this phone (Quick print, Share, Print → Sopifo): this week's count and the nudges. */
+    private val _prints = MutableStateFlow(readPrints())
+    val prints: StateFlow<PrintCount> = _prints.asStateFlow()
+    private fun readPrints() = PrintCount(
+        total = prefs.getInt(KEY_PRINTS_TOTAL, 0),
+        week = prefs.getInt(KEY_PRINTS_WEEK_NO, 0),
+        weekCount = prefs.getInt(KEY_PRINTS_WEEK, 0),
+    )
+    fun countPrints(n: Int, nowMs: Long = System.currentTimeMillis()) {
+        if (n <= 0) return
+        val next = GuestNudges.add(_prints.value, n, nowMs)
+        prefs.edit {
+            putInt(KEY_PRINTS_TOTAL, next.total)
+            putInt(KEY_PRINTS_WEEK_NO, next.week)
+            putInt(KEY_PRINTS_WEEK, next.weekCount)
+        }
+        _prints.value = next
+    }
+
+    /** The guest home's "you print courier labels" card: ✕ hides it for a week. */
+    private val _cardHiddenUntil = MutableStateFlow(prefs.getLong(KEY_CARD_HIDDEN, 0L))
+    val cardHiddenUntil: StateFlow<Long> = _cardHiddenUntil.asStateFlow()
+    fun hideShopCard(nowMs: Long = System.currentTimeMillis()) {
+        val until = nowMs + GuestNudges.CARD_HIDE_MS
+        prefs.edit { putLong(KEY_CARD_HIDDEN, until) }
+        _cardHiddenUntil.value = until
+    }
+
+    /** The day (epoch day) the auto-print strip last showed its sign-up tip: once a day. */
+    var stripTipDay: Long
+        get() = prefs.getLong(KEY_STRIP_TIP_DAY, -1L)
+        set(value) = prefs.edit { putLong(KEY_STRIP_TIP_DAY, value) }
+
     /** Signing out of the dashboard forgets the shop facts (not the printers or language). */
     fun clearShop() = setShop(ShopFacts())
 
@@ -147,6 +196,13 @@ class AppSettings private constructor(context: Context) {
         private const val KEY_SERVICE_USED = "setup_service_used"
         private const val KEY_FIRST_DONE = "setup_first_done"
         private const val KEY_FREE_PRINTS = "service_free_prints"
+        private const val KEY_AUTO_SHARED = "auto_print_shared"
+        private const val KEY_AUTO_ASKED = "auto_print_asked"
+        private const val KEY_PRINTS_TOTAL = "prints_total"
+        private const val KEY_PRINTS_WEEK_NO = "prints_week_no"
+        private const val KEY_PRINTS_WEEK = "prints_week"
+        private const val KEY_CARD_HIDDEN = "shop_card_hidden_until"
+        private const val KEY_STRIP_TIP_DAY = "strip_tip_day"
 
         @Volatile private var instance: AppSettings? = null
 
