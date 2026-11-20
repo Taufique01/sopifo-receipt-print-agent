@@ -62,4 +62,11 @@ class QuickPrintChoicesTest {
     @Test fun pdfWithNoPrinterAsksForALabelPrinter() {
         assertEquals(PrinterRole.LABEL, QuickPrintChoices.pdfRole(hasLabel = false, hasReceipt = false))
     }
+
+    // 2.1.22: Share prints a PDF as dark as the last Quick print PDF (it was always Normal).
+    @Test fun remembersPdfDarkness() {
+        assertEquals(PdfDarkness.DARKER, QuickPrintChoices.restore("LABEL", "S2X3", QuickLabelSize.S2X3, savedPdfDarkness = "DARKER").pdfDarkness)
+        assertEquals(PdfDarkness.NORMAL, QuickPrintChoices.restore("LABEL", "S2X3", QuickLabelSize.S2X3).pdfDarkness)
+        assertEquals(PdfDarkness.NORMAL, QuickPrintChoices.restore("LABEL", "S2X3", QuickLabelSize.S2X3, savedPdfDarkness = "BLACK").pdfDarkness)
+    }
 }

@@ -5,7 +5,6 @@ import com.sopifo.printagent.AppContainer
 import com.sopifo.printagent.core.AppLog
 import com.sopifo.printagent.data.db.PrinterProtocol
 import com.sopifo.printagent.print.PrintDataBuilder
-import com.sopifo.printagent.quick.PdfDarkness
 import com.sopifo.printagent.quick.PdfStretch
 import com.sopifo.printagent.data.db.PrinterRole
 import com.sopifo.printagent.quick.QuickPrintChoices
@@ -24,7 +23,7 @@ import java.io.File
 /**
  * Share → Sopifo prints at once (2.1.20, after the seller said Yes once): a strip shows
  * "🖨 Printing 3 on XP-420B… [Cancel]" for [WAIT_MS], then the pages go to the printer with the
- * last Quick print choices (printer, label size, Fit / Fill) and the app steps back to the app
+ * last Quick print choices (printer, label size, Fit / Fill, PDF darkness) and the app steps back to the app
  * the file came from. No printer for those choices → Quick print opens as before.
  */
 object SharedAutoPrint {
@@ -89,7 +88,7 @@ object SharedAutoPrint {
                         strip.value = strip.value?.copy(pages = minOf(pages, MAX_PAGES))
                         renderer.pdfPages(
                             item.uri, 1, minOf(pages, MAX_PAGES), target,
-                            trim = true, fit = choice.pdfFit, darkness = PdfDarkness.NORMAL, stretch = PdfStretch.X1,
+                            trim = true, fit = choice.pdfFit, darkness = choice.pdfDarkness, stretch = PdfStretch.X1,
                             smart = QuickPrintChoices.PDF_SMART_DEFAULT,
                         )
                     } else {

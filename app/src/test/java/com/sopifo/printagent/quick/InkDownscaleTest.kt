@@ -8,10 +8,10 @@ class InkDownscaleTest {
     private val white = 0xFFFFFFFF.toInt()
     private val black = 0xFF000000.toInt()
 
-    @Test fun aThinStrokeSurvivesShrinkingToAThird() {
+    @Test fun aThinStrokeSurvivesShrinkingToAThirdOnDarker() {
         // A 1-pixel vertical line in a 30 × 30 page, shrunk to 10 × 10: a third of one dot column.
         val src = IntArray(30 * 30) { i -> if (i % 30 == 13) black else white }
-        val out = InkDownscale.downscale(src, 30, 30, 10, 10)
+        val out = InkDownscale.downscale(src, 30, 30, 10, 10, PdfDarkness.DARKER.cutoff)
         for (y in 0 until 10) {
             assertEquals(black, out[y * 10 + 4])
             assertEquals(white, out[y * 10 + 3])
@@ -33,7 +33,7 @@ class InkDownscaleTest {
     }
 
     @Test fun sameSizeIsAPlainCutoff() {
-        val src = intArrayOf(0xFFC0C0C0.toInt(), 0xFFD0D0D0.toInt()) // 192 → black, 208 → white
+        val src = intArrayOf(0xFFA0A0A0.toInt(), 0xFFB0B0B0.toInt()) // 160 → black, 176 → white
         val out = InkDownscale.downscale(src, 2, 1, 2, 1)
         assertEquals(black, out[0])
         assertEquals(white, out[1])
@@ -45,10 +45,28 @@ class InkDownscaleTest {
     }
 
     @Test fun darkerSettingsKeepFainterInk() {
-        // 2 of 16 pixels black: 12.5% ink (average 223) — white on Normal, black on Darker and Darkest.
-        val src = IntArray(16) { i -> if (i == 5 || i == 10) black else white }
-        assertEquals(white, InkDownscale.downscale(src, 4, 4, 1, 1, PdfDarkness.NORMAL.cutoff)[0])
-        assertEquals(black, InkDownscale.downscale(src, 4, 4, 1, 1, PdfDarkness.DARKER.cutoff)[0])
-        assertEquals(black, InkDownscale.downscale(src, 4, 4, 1, 1, PdfDarkness.DARKEST.cutoff)[0])
+        // 2 of 16 pixels black: 12.5% ink (average 223) — only Darkest keeps it.
+        val faint = IntArray(16) { i -> if (i == 5 || i == 10) black else white }
+        assertEquals(white, InkDownscale.downscale(faint, 4, 4, 1, 1, PdfDarkness.NORMAL.cutoff)[0])
+        assertEquals(white, InkDownscale.downscale(faint, 4, 4, 1, 1, PdfDarkness.DARKER.cutoff)[0])
+        assertEquals(black, InkDownscale.downscale(faint, 4, 4, 1, 1, PdfDarkness.DARKEST.cutoff)[0])
+        // 4 of 16: 25% ink (average 191) — Darker and Darkest.
+        val quarter = IntArray(16) { i -> if (i in setOf(0, 5, 10, 15)) black else white }
+        assertEquals(white, InkDownscale.downscale(quarter, 4, 4, 1, 1, PdfDarkness.NORMAL.cutoff)[0])
+        assertEquals(black, InkDownscale.downscale(quarter, 4, 4, 1, 1, PdfDarkness.DARKER.cutoff)[0])
+        assertEquals(black, InkDownscale.downscale(quarter, 4, 4, 1, 1, PdfDarkness.DARKEST.cutoff)[0])
+    }
+
+    // 2.1.22: Normal printed shared courier labels too dark and closed up their QR codes. A dot
+    // a third inked (a QR module's edge) stays white on Normal; 40% ink still prints.
+    @Test fun normalIsLighterSoQrModulesDoNotGrow() {
+        assertEquals(170, PdfDarkness.NORMAL.cutoff)
+        assertEquals(200, PdfDarkness.DARKER.cutoff)
+        assertEquals(230, PdfDarkness.DARKEST.cutoff)
+        val third = IntArray(15) { i -> if (i % 3 == 0) black else white } // 5 of 15: average 170
+        assertEquals(white, InkDownscale.downscale(third, 15, 1, 1, 1, PdfDarkness.NORMAL.cutoff)[0])
+        val twoFifths = IntArray(5) { i -> if (i < 2) black else white } // average 153
+        assertEquals(black, InkDownscale.downscale(twoFifths, 5, 1, 1, 1, PdfDarkness.NORMAL.cutoff)[0])
+        assertEquals(PdfDarkness.NORMAL.cutoff, InkDownscale.INK_CUTOFF)
     }
 }

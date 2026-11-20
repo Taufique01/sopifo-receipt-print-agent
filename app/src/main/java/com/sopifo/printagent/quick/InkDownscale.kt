@@ -2,13 +2,13 @@ package com.sopifo.printagent.quick
 
 /**
  * Shrinks a page drawn at high resolution to printer dots and decides black or white per dot.
- * Each dot averages the source pixels it covers and turns black from about 22% ink, so text a
- * fraction of a dot thin still prints. Plain scaling then the printer's mid-grey cut-off keeps
- * only bold text on small paper.
+ * Each dot averages the source pixels it covers and turns black from a third ink (Normal), so
+ * text a fraction of a dot thin still prints. Plain scaling then the printer's mid-grey cut-off
+ * keeps only bold text on small paper.
  */
 object InkDownscale {
-    /** Average luminance below this prints black (~22% ink coverage). */
-    const val INK_CUTOFF = 200
+    /** Average luminance below this prints black (a third ink coverage; same as Normal). */
+    const val INK_CUTOFF = 170
     /** Pixels lighter than this (tinted backgrounds, pale shading) count as white paper. */
     const val BACKGROUND_CUTOFF = 220
 
@@ -53,13 +53,15 @@ object InkDownscale {
 }
 
 /**
- * How dark a PDF prints: a dot averaging darker than [cutoff] prints black. Normal ~22% ink,
- * Darker ~12%, Darkest ~6% (hairlines and faint grey text). Same values as the web scratchpad.
+ * How dark a PDF prints: a dot averaging darker than [cutoff] prints black. Normal a third ink,
+ * Darker ~22%, Darkest ~10% (hairlines and faint grey text). 2.1.22: Normal was 200 (today's
+ * Darker) and printed shared courier labels too dark, its QR modules grown shut once the printer's
+ * dots spread. Same values as the web scratchpad (src/lib/print/pdf-to-png.ts).
  */
 enum class PdfDarkness(val title: String, val cutoff: Int) {
-    NORMAL("Normal", 200),
-    DARKER("Darker", 225),
-    DARKEST("Darkest", 240),
+    NORMAL("Normal", 170),
+    DARKER("Darker", 200),
+    DARKEST("Darkest", 230),
 }
 
 /** A roll print's page this many times taller (letters taller, not wider). Same as the web. */
